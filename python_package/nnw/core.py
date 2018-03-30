@@ -64,11 +64,16 @@ class NNW(BaseEstimator):
             if prop != "self":
                 setattr(self, prop, locals()[prop])
 
+    def _check_dims(self, x_tc, y_tc):
+        if len(x_tc.shape) == 1 or len(y_tc.shape) == 1:
+            raise ValueError("x and y must have shape (s, f) "
+                             "where s is the sample size and "
+                             "f is the number of features")
+
     def fit(self, x_train, y_train):
         self.gpu = self.gpu and torch.cuda.is_available()
 
-        if len(y_train.shape) == 1:
-            y_train = y_train[:, None]
+        self._check_dims(x_train, y_train)
 
         self.x_dim = x_train.shape[1]
         self.y_dim = y_train.shape[1]
@@ -80,6 +85,8 @@ class NNW(BaseEstimator):
 
         if self.estimators is None:
             self.estimators = [
+                linear_model.LinearRegression(),
+
                 linear_model.Lasso(alpha=0.5),
                 linear_model.Lasso(alpha=1.0),
                 linear_model.Lasso(alpha=2.0),
@@ -87,6 +94,15 @@ class NNW(BaseEstimator):
                 linear_model.Ridge(alpha=0.5),
                 linear_model.Ridge(alpha=1.0),
                 linear_model.Ridge(alpha=2.0),
+
+                linear_model.ElasticNet(alpha=0.5),
+                linear_model.ElasticNet(alpha=1.0),
+                linear_model.ElasticNet(alpha=2.0),
+
+                linear_model.LassoLars(alpha=0.5),
+                linear_model.LassoLars(alpha=1.0),
+                linear_model.LassoLars(alpha=2.0),
+
                 #svm.SVC()
                 ]
 
@@ -116,21 +132,18 @@ class NNW(BaseEstimator):
 
     def move_to_gpu(self):
         self.neural_net.cuda()
-        if hasattr(self, "predictions"):
-            self.predictions = self.predictions.cuda()
         self.gpu = True
 
         return self
 
     def move_to_cpu(self):
         self.neural_net.cpu()
-        if hasattr(self, "predictions"):
-            self.predictions = self.predictions.cpu()
         self.gpu = False
 
         return self
 
     def improve_fit(self, x_train, y_train, nepoch):
+        self._check_dims(x_train, y_train)
         assert(self.batch_initial >= 1)
         assert(self.batch_step_multiplier > 0)
         assert(self.batch_step_epoch_expon > 0)
@@ -304,8 +317,7 @@ class NNW(BaseEstimator):
         return avgloss
 
     def score(self, x_test, y_test):
-        if len(y_test.shape) == 1:
-            y_test = y_test[:, None]
+        self._check_dims(x_test, y_test)
 
         predictions = np.empty((x_test.shape[0], y_test.shape[1],
                                      self.est_dim))
@@ -316,7 +328,6 @@ class NNW(BaseEstimator):
             if len(prediction.shape) == 1:
                 prediction = prediction[:, None]
             predictions[:, :, eind] = torch.from_numpy(prediction)
-
 
         self.neural_net.eval()
         nnx = _np_to_var(x_test, volatile=True)
@@ -348,7 +359,6 @@ class NNW(BaseEstimator):
                 output = nnpred_this * output[:, None, :]
                 output = output.sum(2)
 
-                # Main loss
                 loss = self.criterion(output, nny_this)
 
                 loss_vals.append(loss.data.cpu().numpy()[0])
@@ -361,19 +371,33 @@ class NNW(BaseEstimator):
         return -1 * np.average(loss_vals, weights=batch_sizes)
 
     def predict(self, x_pred):
-        raise NotImplemented("Must fix")
+        self._check_dims(x_pred, np.empty((1,1)))
+
+        for eind, estimator in enumerate(self.estimators):
+            if self.verbose >= 1:
+                print("Calculating prediction for estimator", estimator)
+            prediction = estimator.predict(x_pred)
+            if len(prediction.shape) == 1:
+                prediction = prediction[:, None]
+            if eind == 0:
+                predictions = np.empty((x_pred.shape[0],
+                                        prediction.shape[1],
+                                        self.est_dim))
+            predictions[:, :, eind] = torch.from_numpy(prediction)
+
         self.neural_net.eval()
         nnx = _np_to_var(x_pred, volatile=True)
+        nnpred = _np_to_var(predictions, volatile=True)
 
         if self.gpu:
             nnx = nnx.cuda()
-            nny = nny.cuda()
+            nnpred = nnpred.cuda()
 
-        x_output_pred = self.neural_net(nnx)
+        output = self.neural_net(nnx)
+        output = nnpred * output[:, None, :]
+        output = output.sum(2)
 
-        output_pred = F.softplus(output_pred)
-        output_pred /= output_pred.mean(1)[:,None]
-        return output_pred.data.cpu().numpy()
+        return output.data.cpu().numpy()
 
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):

@@ -30,8 +30,8 @@ import os
 
 from generate_data import generate_data, true_pdf_calc
 
-n_train = 2_000
-n_test = 800
+n_train = 100_000
+n_test = 4000
 x_train, y_train = generate_data(n_train)
 x_test, y_test = generate_data(n_test)
 
@@ -43,24 +43,30 @@ nnw_obj = NNW(
 verbose=2,
 nn_weights_loss_penal=0.0,
 es=True,
-hls_multiplier=1,
-nhlayers=1,
-gpu=False,
+hls_multiplier=5,
+nhlayers=2,
+gpu=True,
 )
 
 nnw_obj.fit(x_train, y_train)
 
 nnw_obj.verbose = 0
-print("Risk on train:", - nnw_obj.score(x_train, y_train))
-for i, estimator in enumerate(nnw_obj.estimators):
-    print("Risk on train for estimator", i, "is:",
-          ((estimator.predict(x_train) - y_train)**2).mean()
-         )
+print("Risk on train (ensembler):", - nnw_obj.score(x_train, y_train))
+#for i, estimator in enumerate(nnw_obj.estimators):
+#    print("Risk on train for estimator", i, "is:",
+#          ((estimator.predict(x_train) - y_train)**2).mean()
+#         )
 
-print("Risk on test:", - nnw_obj.score(x_test, y_test))
+print("Risk on test (ensembler):", - nnw_obj.score(x_test, y_test))
+print("Risk on test (ensembler):",
+      ((nnw_obj.predict(x_test) - y_test)**2).mean()
+     )
 for i, estimator in enumerate(nnw_obj.estimators):
+    prediction = estimator.predict(x_test)
+    if len(prediction.shape) == 1:
+        prediction = prediction[:, None]
     print("Risk on test for estimator", i, "is:",
-          ((estimator.predict(x_test) - y_test)**2).mean()
+          ((prediction - y_test)**2).mean()
          )
 
 """

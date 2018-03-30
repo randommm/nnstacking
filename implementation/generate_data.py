@@ -64,4 +64,4 @@ def generate_data(n_gen):
     y_gen = torch.from_numpy(y_gen)
     y_gen = F.sigmoid(y_gen).numpy()
 
-    return x_gen, y_gen
+    return x_gen, y_gen[:, None]
