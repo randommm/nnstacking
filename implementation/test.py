@@ -64,12 +64,12 @@ estimators = [
 
 nnw_obj = NNW(
 verbose=2,
-nn_weights_loss_penal=0.0,
+nn_weight_decay=0.0,
 es=True,
-hls_multiplier=5,
-nhlayers=2,
+hls_multiplier=100,
+nhlayers=5,
 estimators=estimators,
-gpu=False,
+gpu=True,
 )
 
 nnw_obj.fit(x_train, y_train)

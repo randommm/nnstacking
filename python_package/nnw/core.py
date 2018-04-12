@@ -32,24 +32,75 @@ from sklearn import svm, linear_model
 
 
 class NNW(BaseEstimator):
+    """
+    Stacks many estimators using deep foward neural networks.
+
+    Parameters
+    ----------
+    estimators : list
+        List of estimators to use. They must be sklearn-compatible.
+    weightining_method : str
+        Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
+    splitter : object
+        Chooses the splitting of data to generate the predictions of the estimators. Must be an instance of a class from sklearn.model_selection (or behave similatly), defaults to "ten-fold".
+
+    nhlayers : integer
+        Number of hidden layers for the neural network. If set to 0, then it degenerates to linear regression.
+    hls_multiplier : integer
+        Multiplier for the size of the hidden layers of the neural network. If set to 1, then each of them will have ncomponents components. If set to 2, then 2 * ncomponents components, and so on.
+    criterion : object
+        Loss criterion for the neural network, defaults to torch.nn.MSELoss().
+    nn_weight_decay : object
+        Mulplier for penalizaing the size of neural network weights. This penalization occurs for training only (does not affect score method nor validation of early stopping).
+
+    es : bool
+        If true, then will split the training set into training and validation and calculate the validation internally on each epoch and check if the validation loss increases or not.
+    es_validation_set : float
+        Size of the validation set if es == True.
+    es_give_up_after_nepochs : float
+        Amount of epochs to try to decrease the validation loss before giving up and stoping training.
+    es_splitter_random_state : float
+        Random state to split the dataset into training and validation.
+
+    nepoch : integer
+        Number of epochs to run. Ignored if es == True.
+
+    batch_initial : integer
+        Initial batch size.
+    batch_step_multiplier : float
+        See batch_inital.
+    batch_step_epoch_expon : float
+        See batch_inital.
+    batch_max_size : float
+        See batch_inital.
+
+    batch_test_size : integer
+        Size of the batch for validation and score methods.
+        Does not affect training efficiency, usefull when there's
+        little GPU memory.
+    gpu : bool
+        If true, will use gpu for computation, if available.
+    verbose : integer
+        Level verbosity. Set to 0 for silent mode.
+    """
     def __init__(self,
                  estimators=None,
                  weightining_method="cov_to_weights",
                  splitter=None,
 
-                 nn_weights_loss_penal=0,
                  nhlayers=1,
                  hls_multiplier=5,
                  criterion=None,
+                 nn_weight_decay=0,
 
                  es = True,
                  es_validation_set = 0.1,
-                 es_give_up_after_nepochs = 20,
+                 es_give_up_after_nepochs = 50,
                  es_splitter_random_state = 0,
 
                  nepoch=200,
 
-                 batch_initial=400,
+                 batch_initial=50,
                  batch_step_multiplier=1.1,
                  batch_step_epoch_expon=1.1,
                  batch_max_size=500,
@@ -66,8 +117,8 @@ class NNW(BaseEstimator):
     def _check_dims(self, x_tc, y_tc):
         if len(x_tc.shape) == 1 or len(y_tc.shape) == 1:
             raise ValueError("x and y must have shape (s, f) "
-                             "where s is the sample size and "
-                             "f is the number of features")
+                              "where s is the sample size and "
+                              "f is the number of features")
 
     def fit(self, x_train, y_train):
         self.gpu = self.gpu and torch.cuda.is_available()
@@ -102,7 +153,8 @@ class NNW(BaseEstimator):
                                      self.est_dim))
         for eind, estimator in enumerate(self.estimators):
             if self.verbose >= 1:
-                print("Calculating prediction for estimator", estimator)
+                print("Calculating prediction for estimator",
+                      estimator)
 
             prediction = np.empty((self.nobs, self.y_dim))
             for tr_in, val_in in splitter.split(x_train, y_train):
@@ -144,7 +196,7 @@ class NNW(BaseEstimator):
         assert(self.batch_max_size >= 1)
         assert(self.batch_test_size >= 1)
 
-        assert(self.nn_weights_loss_penal >= 0)
+        assert(self.nn_weight_decay >= 0)
 
         assert(self.nhlayers >= 0)
         assert(self.hls_multiplier > 0)
@@ -184,10 +236,9 @@ class NNW(BaseEstimator):
 
         start_time = time.process_time()
 
-        optimizer = optim.Adam(self.neural_net.parameters())
-        self.nn_weights_loss_penal = 100
+        optimizer = optim.Adamax(self.neural_net.parameters(), lr=0.004,
+                                 weight_decay=self.nn_weight_decay)
         for _ in range_epoch:
-            self.nn_weights_loss_penal /= 2.0
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
                 self.batch_step_multiplier *
@@ -219,7 +270,14 @@ class NNW(BaseEstimator):
                               "so far.")
                 else:
                     es_tries += 1
-                if es_tries >= self.es_give_up_after_nepochs:
+
+                if (es_tries == self.es_give_up_after_nepochs // 3 or
+                    es_tries == self.es_give_up_after_nepochs // 3 * 2):
+                    if self.verbose >= 2:
+                        print("Decreasing learning rate by half.")
+                    optimizer.param_groups[0]['lr'] *= 0.5
+                    #self.neural_net.load_state_dict(best_state_dict)
+                elif es_tries >= self.es_give_up_after_nepochs:
                     self.neural_net.load_state_dict(best_state_dict)
                     if self.verbose >= 1:
                         print("Validation loss did not improve after",
@@ -273,13 +331,6 @@ class NNW(BaseEstimator):
 
                 # Main loss
                 loss = self.criterion(output, nny_this)
-
-                # Penalize on nn weights
-                if self.nn_weights_loss_penal != 0 and ftype == "train":
-                    penal = self.neural_net.parameters()
-                    penal = map(lambda x: (x**2).sum(), penal)
-                    penal = Variable.cat(tuple(penal)).sum()
-                    loss += penal * self.nn_weights_loss_penal
 
                 # Correction for last batch as it might be smaller
                 if batch_actual_size != batch_size:
@@ -401,7 +452,7 @@ class NNW(BaseEstimator):
 
                 next_input_l_size = input_dim
                 output_hl_size = int(output_dim * hls_multiplier)
-                self.m = nn.AlphaDropout(p=0.5)
+                self.m = nn.Dropout(p=0.5)
 
                 for i in range(nhlayers):
                     lname = "fc_" + str(i)
@@ -425,7 +476,7 @@ class NNW(BaseEstimator):
                     fc = self.__getattr__("fc_" + str(i))
                     fcn = self.__getattr__("fc_n_" + str(i))
                     x = fcn(F.relu(fc(x)))
-                    self.m(x)
+                    x = self.m(x)
                 x = self.fc_last(x)
                 x = self.softmax(x)
                 return x
