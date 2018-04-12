@@ -22,6 +22,7 @@ import scipy.stats as stats
 
 from nnw import NNW
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
+from sklearn import svm, linear_model
 
 import hashlib
 import pickle
@@ -39,13 +40,36 @@ print(y_train)
 print(min(y_train))
 print(max(y_train))
 
+estimators = [
+              linear_model.LinearRegression(),
+
+              linear_model.Lasso(alpha=0.5),
+              linear_model.Lasso(alpha=1.0),
+              linear_model.Lasso(alpha=2.0),
+
+              linear_model.Ridge(alpha=0.5),
+              linear_model.Ridge(alpha=1.0),
+              linear_model.Ridge(alpha=2.0),
+
+              linear_model.ElasticNet(alpha=0.5),
+              linear_model.ElasticNet(alpha=1.0),
+              linear_model.ElasticNet(alpha=2.0),
+
+              linear_model.LassoLars(alpha=0.5),
+              linear_model.LassoLars(alpha=1.0),
+              linear_model.LassoLars(alpha=2.0),
+
+              #svm.SVC()
+             ]
+
 nnw_obj = NNW(
 verbose=2,
 nn_weights_loss_penal=0.0,
 es=True,
 hls_multiplier=5,
 nhlayers=2,
-gpu=True,
+estimators=estimators,
+gpu=False,
 )
 
 nnw_obj.fit(x_train, y_train)

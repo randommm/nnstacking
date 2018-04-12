@@ -26,8 +26,7 @@ import numpy as np
 import time
 import itertools
 from sklearn.base import BaseEstimator
-from sklearn.model_selection import ShuffleSplit
-from sklearn.model_selection import ShuffleSplit
+from sklearn.model_selection import ShuffleSplit, KFold
 
 from sklearn import svm, linear_model
 
@@ -36,7 +35,7 @@ class NNW(BaseEstimator):
     def __init__(self,
                  estimators=None,
                  weightining_method="cov_to_weights",
-                 fit_estimators = True,
+                 splitter=None,
 
                  nn_weights_loss_penal=0,
                  nhlayers=1,
@@ -86,44 +85,39 @@ class NNW(BaseEstimator):
         if self.estimators is None:
             self.estimators = [
                 linear_model.LinearRegression(),
-
-                linear_model.Lasso(alpha=0.5),
-                linear_model.Lasso(alpha=1.0),
-                linear_model.Lasso(alpha=2.0),
-
-                linear_model.Ridge(alpha=0.5),
-                linear_model.Ridge(alpha=1.0),
-                linear_model.Ridge(alpha=2.0),
-
-                linear_model.ElasticNet(alpha=0.5),
-                linear_model.ElasticNet(alpha=1.0),
-                linear_model.ElasticNet(alpha=2.0),
-
-                linear_model.LassoLars(alpha=0.5),
-                linear_model.LassoLars(alpha=1.0),
-                linear_model.LassoLars(alpha=2.0),
-
+                linear_model.Lasso(),
+                linear_model.Ridge(),
                 #svm.SVC()
                 ]
 
         self.est_dim = len(self.estimators)
         self._construct_neural_net()
 
-        if self.fit_estimators:
-            for estimator in self.estimators:
-                if self.verbose >= 1:
-                    print("Fitting estimator", estimator)
-                estimator.fit(x_train, y_train)
+        if self.splitter is None:
+            splitter = KFold(n_splits=10, shuffle=True, random_state=0)
+        else:
+            splitter = self.splitter
 
         self.predictions = np.empty((self.nobs, self.y_dim,
                                      self.est_dim))
         for eind, estimator in enumerate(self.estimators):
             if self.verbose >= 1:
                 print("Calculating prediction for estimator", estimator)
-            prediction = estimator.predict(x_train)
-            if len(prediction.shape) == 1:
-                prediction = prediction[:, None]
+
+            prediction = np.empty((self.nobs, self.y_dim))
+            for tr_in, val_in in splitter.split(x_train, y_train):
+                estimator.fit(x_train[tr_in], y_train[tr_in])
+                prediction_b = estimator.predict(x_train[val_in])
+                if len(prediction_b.shape) == 1:
+                    prediction_b = prediction_b[:, None]
+                prediction[val_in] = prediction_b
+
             self.predictions[:,:,eind] = torch.from_numpy(prediction)
+
+        for estimator in self.estimators:
+            if self.verbose >= 1:
+                print("Fitting full estimator", estimator)
+            estimator.fit(x_train, y_train)
 
         if self.gpu:
             self.move_to_gpu()
