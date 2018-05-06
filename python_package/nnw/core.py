@@ -29,6 +29,8 @@ from sklearn.model_selection import ShuffleSplit, KFold
 
 from sklearn import svm, linear_model
 
+import multiprocessing as mp
+
 class NNW(BaseEstimator):
     """
     Stacks many estimators using deep foward neural networks.
@@ -85,6 +87,7 @@ class NNW(BaseEstimator):
                  estimators=None,
                  weightining_method="f_to_w",
                  splitter=None,
+                 ncores=2,
 
                  nhlayers=4,
                  hls_multiplier=20,
@@ -149,25 +152,25 @@ class NNW(BaseEstimator):
 
         self.predictions = np.empty((self.nobs, self.y_dim,
                                      self.est_dim))
+
+        ctx = mp.get_context('spawn')
+        pool = ctx.Pool(self.ncores)
+        results = []
         for eind, estimator in enumerate(self.estimators):
-            if self.verbose >= 1:
-                print("Calculating prediction for estimator",
-                      estimator)
+            result = pool.apply_async(pfunc,
+                args = (x_train, y_train, splitter, eind, estimator,
+                        self.nobs, self.y_dim, self.verbose),
+                error_callback=perr)
+            results.append(result)
 
-            prediction = np.empty((self.nobs, self.y_dim))
-            for tr_in, val_in in splitter.split(x_train, y_train):
-                estimator.fit(x_train[tr_in], y_train[tr_in])
-                prediction_b = estimator.predict(x_train[val_in])
-                if len(prediction_b.shape) == 1:
-                    prediction_b = prediction_b[:, None]
-                prediction[val_in] = prediction_b
+        for result in results:
+            prediction, eind, estimator = result.get()
+            prediction = torch.from_numpy(prediction)
+            self.predictions[:, :, eind] = prediction
+            self.estimators[eind] = estimator
 
-            self.predictions[:,:,eind] = torch.from_numpy(prediction)
-
-        for estimator in self.estimators:
-            if self.verbose >= 1:
-                print("Fitting full estimator", estimator)
-            estimator.fit(x_train, y_train)
+        pool.close()
+        pool.join()
 
         if self.gpu:
             self.move_to_gpu()
@@ -571,3 +574,26 @@ def _np_to_var(arr):
     arr = np.array(arr, dtype='f4')
     arr = torch.from_numpy(arr)
     return arr
+
+def pfunc(x_train, y_train, splitter, eind, estimator, nobs, y_dim,
+          verbose):
+    if verbose >= 1:
+        print("Calculating prediction for estimator",
+              estimator)
+
+    prediction = np.empty((nobs, y_dim))
+    for tr_in, val_in in splitter.split(x_train, y_train):
+        estimator.fit(x_train[tr_in], y_train[tr_in])
+        prediction_b = estimator.predict(x_train[val_in])
+        if len(prediction_b.shape) == 1:
+            prediction_b = prediction_b[:, None]
+        prediction[val_in] = prediction_b
+
+    if verbose >= 1:
+        print("Fitting full estimator", estimator)
+    estimator.fit(x_train, y_train)
+
+    return prediction, eind, estimator
+
+def perr(err):
+    print("Error during multiprocessing:", err)
