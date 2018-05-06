@@ -16,7 +16,6 @@
 from __future__ import division
 
 import torch
-from torch.autograd import Variable
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,7 +28,6 @@ from sklearn.base import BaseEstimator
 from sklearn.model_selection import ShuffleSplit, KFold
 
 from sklearn import svm, linear_model
-
 
 class NNW(BaseEstimator):
     """
@@ -85,7 +83,7 @@ class NNW(BaseEstimator):
     """
     def __init__(self,
                  estimators=None,
-                 weightining_method="cov_to_weights",
+                 weightining_method="f_to_w",
                  splitter=None,
 
                  nhlayers=1,
@@ -294,155 +292,157 @@ class NNW(BaseEstimator):
 
     def _one_epoch(self, ftype, batch_size, nnx, nny, nnpred,
                    optimizer, volatile):
+        with torch.set_grad_enabled(not volatile):
+            nnx = torch.from_numpy(nnx)
+            nny = torch.from_numpy(nny)
+            nnpred = torch.from_numpy(nnpred)
+            if self.gpu:
+                nnx = nnx.pin_memory()
+                nny = nny.pin_memory()
+                nnpred = nnpred.pin_memory()
 
-        nnx = torch.from_numpy(nnx)
-        nny = torch.from_numpy(nny)
-        nnpred = torch.from_numpy(nnpred)
-        if self.gpu:
-            nnx = nnx.pin_memory()
-            nny = nny.pin_memory()
-            nnpred = nnpred.pin_memory()
-        nnx = Variable(nnx, volatile=volatile)
-        nny = Variable(nny, volatile=volatile)
-        nnpred = Variable(nnpred, volatile=volatile)
+            loss_vals = []
+            batch_sizes = []
+            for i in range(0, nny.shape[0] + batch_size, batch_size):
+                if i < nny.shape[0]:
+                    nnx_next = nnx[i:i+batch_size]
+                    nny_next = nny[i:i+batch_size]
+                    nnpred_next = nnpred[i:i+batch_size]
 
-        loss_vals = []
-        batch_sizes = []
-        for i in range(0, nny.shape[0] + batch_size, batch_size):
-            if i < nny.shape[0]:
-                nnx_next = nnx[i:i+batch_size]
-                nny_next = nny[i:i+batch_size]
-                nnpred_next = nnpred[i:i+batch_size]
+                    if self.gpu:
+                        nnx_next = nnx_next.cuda(async=True)
+                        nny_next = nny_next.cuda(async=True)
+                        nnpred_next = nnpred_next.cuda(async=True)
 
-                if self.gpu:
-                    nnx_next = nnx_next.cuda(async=True)
-                    nny_next = nny_next.cuda(async=True)
-                    nnpred_next = nnpred_next.cuda(async=True)
+                if i != 0:
+                    batch_actual_size = nnx_this.shape[0]
+                    if (batch_actual_size != batch_size and
+                        ftype == "train"):
+                        continue
 
-            if i != 0:
-                batch_actual_size = nnx_this.shape[0]
-                if batch_actual_size != batch_size and ftype == "train":
-                    continue
+                    optimizer.zero_grad()
+                    output = self.neural_net(nnx_this)
+                    output = nnpred_this * output[:, None, :]
+                    output = output.sum(2)
 
-                optimizer.zero_grad()
-                output = self.neural_net(nnx_this)
-                output = nnpred_this * output[:, None, :]
-                output = output.sum(2)
+                    # Main loss
+                    loss = self.criterion(output, nny_this)
 
-                # Main loss
-                loss = self.criterion(output, nny_this)
+                    # Correction for last batch as it might be smaller
+                    if batch_actual_size != batch_size:
+                        loss *= batch_actual_size / batch_size
 
-                # Correction for last batch as it might be smaller
-                if batch_actual_size != batch_size:
-                    loss *= batch_actual_size / batch_size
+                    np_loss = loss.data.cpu().numpy()
+                    if np.isnan(np_loss):
+                        raise RuntimeError("Loss is NaN")
 
-                np_loss = loss.data.cpu().numpy()[0]
-                if np.isnan(np_loss):
-                    raise RuntimeError("Loss is NaN")
+                    loss_vals.append(np_loss)
+                    batch_sizes.append(batch_actual_size)
 
-                loss_vals.append(np_loss)
-                batch_sizes.append(batch_actual_size)
+                    if ftype == "train":
+                        loss.backward()
+                        optimizer.step()
 
-                if ftype == "train":
-                    loss.backward()
-                    optimizer.step()
+                nnx_this = nnx_next
+                nny_this = nny_next
+                nnpred_this = nnpred_next
 
-            nnx_this = nnx_next
-            nny_this = nny_next
-            nnpred_this = nnpred_next
+            avgloss = np.average(loss_vals, weights=batch_sizes)
+            if self.verbose >= 2:
+                print("Finished epoch", self.epoch_count,
+                      "with batch size", batch_size,
+                      "and", ftype,
+                      ("pseudo-" if ftype == "train" else "") + "loss",
+                      avgloss, flush=True)
 
-        avgloss = np.average(loss_vals, weights=batch_sizes)
-        if self.verbose >= 2:
-            print("Finished epoch", self.epoch_count,
-                  "with batch size", batch_size,
-                  "and", ftype,
-                  ("pseudo-" if ftype == "train" else "") + "loss",
-                  avgloss, flush=True)
-
-        return avgloss
+            return avgloss
 
     def score(self, x_test, y_test):
-        self._check_dims(x_test, y_test)
+        with torch.no_grad():
+            self._check_dims(x_test, y_test)
 
-        predictions = np.empty((x_test.shape[0], y_test.shape[1],
-                                     self.est_dim))
-        for eind, estimator in enumerate(self.estimators):
-            if self.verbose >= 1:
-                print("Calculating prediction for estimator", estimator)
-            prediction = estimator.predict(x_test)
-            if len(prediction.shape) == 1:
-                prediction = prediction[:, None]
-            predictions[:, :, eind] = torch.from_numpy(prediction)
+            predictions = np.empty((x_test.shape[0], y_test.shape[1],
+                                         self.est_dim))
+            for eind, estimator in enumerate(self.estimators):
+                if self.verbose >= 1:
+                    print("Calculating prediction for estimator",
+                           estimator)
+                prediction = estimator.predict(x_test)
+                if len(prediction.shape) == 1:
+                    prediction = prediction[:, None]
+                predictions[:, :, eind] = torch.from_numpy(prediction)
 
-        self.neural_net.eval()
-        nnx = _np_to_var(x_test, volatile=True)
-        nny = _np_to_var(y_test, volatile=True)
-        nnpred = _np_to_var(predictions, volatile=True)
+            self.neural_net.eval()
+            nnx = _np_to_var(x_test)
+            nny = _np_to_var(y_test)
+            nnpred = _np_to_var(predictions)
 
-        if self.gpu:
-            nnx = Variable(nnx.data.pin_memory(), volatile=True)
-            nny = Variable(nny.data.pin_memory(), volatile=True)
-            nnpred = Variable(nnpred.data.pin_memory(), volatile=True)
+            if self.gpu:
+                nnx = nnx.pin_memory()
+                nny = nny.pin_memory()
+                nnpred = nnpred.pin_memory()
 
-        batch_size = min(self.batch_test_size, x_test.shape[0])
+            batch_size = min(self.batch_test_size, x_test.shape[0])
 
-        loss_vals = []
-        batch_sizes = []
-        for i in range(0, nny.shape[0] + batch_size, batch_size):
-            if i < nny.shape[0]:
-                nnx_next = nnx[i:i+batch_size]
-                nny_next = nny[i:i+batch_size]
-                nnpred_next = nnpred[i:i+batch_size]
+            loss_vals = []
+            batch_sizes = []
+            for i in range(0, nny.shape[0] + batch_size, batch_size):
+                if i < nny.shape[0]:
+                    nnx_next = nnx[i:i+batch_size]
+                    nny_next = nny[i:i+batch_size]
+                    nnpred_next = nnpred[i:i+batch_size]
 
-                if self.gpu:
-                    nnx_next = nnx_next.cuda(async=True)
-                    nny_next = nny_next.cuda(async=True)
-                    nnpred_next = nnpred_next.cuda(async=True)
+                    if self.gpu:
+                        nnx_next = nnx_next.cuda(async=True)
+                        nny_next = nny_next.cuda(async=True)
+                        nnpred_next = nnpred_next.cuda(async=True)
 
-            if i != 0:
-                output = self.neural_net(nnx_this)
-                output = nnpred_this * output[:, None, :]
-                output = output.sum(2)
+                if i != 0:
+                    output = self.neural_net(nnx_this)
+                    output = nnpred_this * output[:, None, :]
+                    output = output.sum(2)
 
-                loss = self.criterion(output, nny_this)
+                    loss = self.criterion(output, nny_this)
 
-                loss_vals.append(loss.data.cpu().numpy()[0])
-                batch_sizes.append(nnx_this.shape[0])
+                    loss_vals.append(loss.data.cpu().numpy())
+                    batch_sizes.append(nnx_this.shape[0])
 
-            nnx_this = nnx_next
-            nny_this = nny_next
-            nnpred_this = nnpred_next
+                nnx_this = nnx_next
+                nny_this = nny_next
+                nnpred_this = nnpred_next
 
-        return -1 * np.average(loss_vals, weights=batch_sizes)
+            return -1 * np.average(loss_vals, weights=batch_sizes)
 
     def predict(self, x_pred):
-        self._check_dims(x_pred, np.empty((1,1)))
+        with torch.no_grad():
+            self._check_dims(x_pred, np.empty((1,1)))
 
-        for eind, estimator in enumerate(self.estimators):
-            if self.verbose >= 1:
-                print("Calculating prediction for estimator", estimator)
-            prediction = estimator.predict(x_pred)
-            if len(prediction.shape) == 1:
-                prediction = prediction[:, None]
-            if eind == 0:
-                predictions = np.empty((x_pred.shape[0],
-                                        prediction.shape[1],
-                                        self.est_dim))
-            predictions[:, :, eind] = torch.from_numpy(prediction)
+            for eind, estimator in enumerate(self.estimators):
+                if self.verbose >= 1:
+                    print("Calculating prediction for estimator",
+                          estimator)
+                prediction = estimator.predict(x_pred)
+                if len(prediction.shape) == 1:
+                    prediction = prediction[:, None]
+                if eind == 0:
+                    predictions = np.empty((x_pred.shape[0],
+                                            prediction.shape[1],
+                                            self.est_dim))
+                predictions[:, :, eind] = torch.from_numpy(prediction)
 
-        self.neural_net.eval()
-        nnx = _np_to_var(x_pred, volatile=True)
-        nnpred = _np_to_var(predictions, volatile=True)
+            self.neural_net.eval()
+            nnx = _np_to_var(x_pred)
+            nnpred = _np_to_var(predictions)
 
-        if self.gpu:
-            nnx = nnx.cuda()
-            nnpred = nnpred.cuda()
+            if self.gpu:
+                nnx = nnx.cuda()
+                nnpred = nnpred.cuda()
 
-        output = self.neural_net(nnx)
-        output = nnpred * output[:, None, :]
-        output = output.sum(2)
+            output = self.neural_net(nnx)
+            output = nnpred * output[:, None, :]
+            output = output.sum(2)
 
-        return output.data.cpu().numpy()
+            return output.data.cpu().numpy()
 
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
@@ -486,6 +486,10 @@ class NNW(BaseEstimator):
                 gain=nn.init.calculate_gain('relu')
                 nn.init.xavier_normal(layer.weight, gain=gain)
 
+        if self.weightining_method == "f_to_w":
+            output_dim = self.est_dim
+        elif self.weightining_method == "f_to_m":
+            output_dim = self.est_dim ** 2
         self.neural_net = NeuralNet(self.x_dim, self.est_dim,
                                     self.nhlayers, self.hls_multiplier)
 
@@ -520,7 +524,7 @@ class NNW(BaseEstimator):
             del(self.y_grid)
             self._create_phi_grid()
 
-def _np_to_var(arr, volatile=False):
+def _np_to_var(arr):
     arr = np.array(arr, dtype='f4')
-    arr = Variable(torch.from_numpy(arr), volatile=volatile)
+    arr = torch.from_numpy(arr)
     return arr

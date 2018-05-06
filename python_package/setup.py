@@ -30,5 +30,5 @@ setup(name='nnw',
       packages=['nnw'],
       keywords = ['neural networks', 'predictors'],
       license='GPL3',
-      install_requires=['numpy', 'scikit-learn', 'torch']
+      install_requires=['numpy', 'scikit-learn']
      )
