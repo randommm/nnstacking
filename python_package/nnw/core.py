@@ -86,8 +86,8 @@ class NNW(BaseEstimator):
                  weightining_method="f_to_w",
                  splitter=None,
 
-                 nhlayers=1,
-                 hls_multiplier=5,
+                 nhlayers=4,
+                 hls_multiplier=20,
                  criterion=None,
                  nn_weight_decay=0,
 
@@ -228,14 +228,18 @@ class NNW(BaseEstimator):
             self.best_loss_val = np.infty
             es_tries = 0
             range_epoch = itertools.count() # infty iterator
+            batch_test_size = min(self.batch_test_size,
+                                  x_train.shape[0])
+            self.loss_history_validation = []
 
         batch_max_size = min(self.batch_max_size, x_train.shape[0])
-        batch_test_size = min(self.batch_test_size, x_train.shape[0])
+        self.loss_history_train = []
 
         start_time = time.process_time()
 
         optimizer = optim.Adamax(self.neural_net.parameters(), lr=0.004,
                                  weight_decay=self.nn_weight_decay)
+        es_penal_tries = 0
         for _ in range_epoch:
             batch_size = int(min(batch_max_size,
                 self.batch_initial +
@@ -246,43 +250,74 @@ class NNW(BaseEstimator):
             nnx_train = nnx_train[permutation]
             nny_train = nny_train[permutation]
             nnpred_train = nnpred_train[permutation]
+
             nnx_train = np.ascontiguousarray(nnx_train)
             nny_train = np.ascontiguousarray(nny_train)
             nnpred_train = np.ascontiguousarray(nnpred_train)
 
-            self.neural_net.train()
-            self._one_epoch("train", batch_size, nnx_train,
-                nny_train, nnpred_train, optimizer,
-                volatile=False)
-            if self.es:
+            try:
+                self.neural_net.train()
+                self._one_epoch("train", batch_size, batch_test_size,
+                                nnx_train, nny_train, nnpred_train,
+                                optimizer, volatile=False)
+
                 self.neural_net.eval()
-                avloss = self._one_epoch("test", batch_test_size,
-                    nnx_val, nny_val, nnpred_val, optimizer,
-                    volatile=True)
-                if avloss <= self.best_loss_val:
-                    self.best_loss_val = avloss
-                    best_state_dict = self.neural_net.state_dict()
-                    es_tries = 0
-                    if self.verbose >= 2:
-                        print("This is the lowest validation loss",
-                              "so far.")
-                else:
-                    es_tries += 1
+                avloss = self._one_epoch("train", batch_size,
+                                         batch_test_size, nnx_train,
+                                         nny_train, nnpred_train,
+                                         optimizer,
+                                         volatile=True)
+                self.loss_history_train.append(avloss)
 
-                if (es_tries == self.es_give_up_after_nepochs // 3 or
-                    es_tries == self.es_give_up_after_nepochs // 3 * 2):
-                    if self.verbose >= 2:
-                        print("Decreasing learning rate by half.")
-                    optimizer.param_groups[0]['lr'] *= 0.5
-                    #self.neural_net.load_state_dict(best_state_dict)
-                elif es_tries >= self.es_give_up_after_nepochs:
+                if self.es:
+                    self.neural_net.eval()
+                    avloss = self._one_epoch("val", batch_size,
+                        batch_test_size, nnx_train,
+                        nny_train, nnpred_train, optimizer,
+                        volatile=True)
+                    self.loss_history_validation.append(avloss)
+                    if avloss <= self.best_loss_val:
+                        self.best_loss_val = avloss
+                        best_state_dict = self.neural_net.state_dict()
+                        es_tries = 0
+                        if self.verbose >= 2:
+                            print("This is the lowest validation loss",
+                                  "so far.")
+                    else:
+                        es_tries += 1
+
+                    if (es_tries == self.es_give_up_after_nepochs // 3 or
+                        es_tries == self.es_give_up_after_nepochs // 3 * 2):
+                        if self.verbose >= 2:
+                            print("Decreasing learning rate by half.")
+                        optimizer.param_groups[0]['lr'] *= 0.5
+                        self.neural_net.load_state_dict(best_state_dict)
+                    elif es_tries >= self.es_give_up_after_nepochs:
+                        self.neural_net.load_state_dict(best_state_dict)
+                        if self.verbose >= 1:
+                            print("Validation loss did not improve after",
+                                  self.es_give_up_after_nepochs, "tries.",
+                                  "Stopping")
+                        break
+
+                self.epoch_count += 1
+            except RuntimeError as err:
+                if self.epoch_count == 0:
+                    raise err
+                if self.verbose >= 2:
+                    print("Runtime error problem probably due to",
+                           "learning rate.")
+                    print("Decreasing learning rate by half.")
+                optimizer.param_groups[0]['lr'] *= 0.5
+                self.neural_net.load_state_dict(best_state_dict)
+                continue
+            except KeyboardInterrupt:
+                if self.epoch_count > 0 and self.es:
+                    print("Keyboard interrupt detected.",
+                          "Switching weights to lowest validation loss",
+                          "and exiting")
                     self.neural_net.load_state_dict(best_state_dict)
-                    if self.verbose >= 1:
-                        print("Validation loss did not improve after",
-                              self.es_give_up_after_nepochs, "tries.")
-                    break
-
-            self.epoch_count += 1
+                break
 
         elapsed_time = time.process_time() - start_time
         if self.verbose >= 1:
@@ -290,9 +325,19 @@ class NNW(BaseEstimator):
 
         return self
 
-    def _one_epoch(self, ftype, batch_size, nnx, nny, nnpred,
-                   optimizer, volatile):
+    def _one_epoch(self, ftype, batch_train_size, batch_test_size,
+                   nnx, nny, nnpred, optimizer, volatile):
         with torch.set_grad_enabled(not volatile):
+            if volatile:
+                batch_size = batch_test_size
+            else:
+                batch_size = batch_train_size
+
+            if ftype == "train":
+                batch_show_size = batch_train_size
+            else:
+                batch_show_size = batch_test_size
+
             nnx = torch.from_numpy(nnx)
             nny = torch.from_numpy(nny)
             nnpred = torch.from_numpy(nnpred)
@@ -316,8 +361,7 @@ class NNW(BaseEstimator):
 
                 if i != 0:
                     batch_actual_size = nnx_this.shape[0]
-                    if (batch_actual_size != batch_size and
-                        ftype == "train"):
+                    if batch_actual_size != batch_size and not volatile:
                         continue
 
                     optimizer.zero_grad()
@@ -329,8 +373,8 @@ class NNW(BaseEstimator):
                     loss = self.criterion(output, nny_this)
 
                     # Correction for last batch as it might be smaller
-                    if batch_actual_size != batch_size:
-                        loss *= batch_actual_size / batch_size
+                    #if batch_actual_size != batch_size:
+                    #    loss *= batch_actual_size / batch_size
 
                     np_loss = loss.data.cpu().numpy()
                     if np.isnan(np_loss):
@@ -339,7 +383,7 @@ class NNW(BaseEstimator):
                     loss_vals.append(np_loss)
                     batch_sizes.append(batch_actual_size)
 
-                    if ftype == "train":
+                    if not volatile:
                         loss.backward()
                         optimizer.step()
 
@@ -348,11 +392,10 @@ class NNW(BaseEstimator):
                 nnpred_this = nnpred_next
 
             avgloss = np.average(loss_vals, weights=batch_sizes)
-            if self.verbose >= 2:
+            if self.verbose >= 2 and volatile:
                 print("Finished epoch", self.epoch_count,
-                      "with batch size", batch_size,
-                      "and", ftype,
-                      ("pseudo-" if ftype == "train" else "") + "loss",
+                      "with batch size", batch_show_size,
+                      "and", ftype + " loss",
                       avgloss, flush=True)
 
             return avgloss

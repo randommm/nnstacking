@@ -22,7 +22,7 @@ import scipy.stats as stats
 
 from nnw import NNW
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
-from sklearn import svm, linear_model
+from sklearn import svm, linear_model, ensemble, neighbors
 
 import hashlib
 import pickle
@@ -59,7 +59,18 @@ estimators = [
               linear_model.LassoLars(alpha=1.0),
               linear_model.LassoLars(alpha=2.0),
 
-              #svm.SVC()
+              linear_model.PassiveAggressiveRegressor(),
+              linear_model.OrthogonalMatchingPursuit(),
+              linear_model.HuberRegressor(),
+              linear_model.BayesianRidge(),
+
+              ensemble.RandomForestRegressor(),
+              ensemble.GradientBoostingRegressor(),
+              ensemble.AdaBoostRegressor(),
+              ensemble.BaggingRegressor(),
+
+              svm.SVR(),
+              neighbors.KNeighborsRegressor(),
              ]
 
 nnw_obj = NNW(
