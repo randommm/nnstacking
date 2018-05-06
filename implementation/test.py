@@ -82,6 +82,7 @@ if __name__ == '__main__':
     nhlayers=5,
     estimators=estimators,
     gpu=True,
+    ncores=3,
     )
 
     nnw_obj.fit(x_train, y_train)

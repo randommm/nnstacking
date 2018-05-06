@@ -139,7 +139,7 @@ class NNW(BaseEstimator):
                 linear_model.LinearRegression(),
                 linear_model.Lasso(),
                 linear_model.Ridge(),
-                #svm.SVC()
+                #svm.SVR()
                 ]
 
         self.est_dim = len(self.estimators)
@@ -153,24 +153,49 @@ class NNW(BaseEstimator):
         self.predictions = np.empty((self.nobs, self.y_dim,
                                      self.est_dim))
 
-        ctx = mp.get_context('spawn')
-        pool = ctx.Pool(self.ncores)
-        results = []
-        for eind, estimator in enumerate(self.estimators):
-            result = pool.apply_async(pfunc,
-                args = (x_train, y_train, splitter, eind, estimator,
-                        self.nobs, self.y_dim, self.verbose),
-                error_callback=perr)
-            results.append(result)
+        if self.ncores == 1:
+            self.predictions = np.empty((self.nobs, self.y_dim,
+                                         self.est_dim))
+            for eind, estimator in enumerate(self.estimators):
+                if self.verbose >= 1:
+                    print("Calculating prediction for estimator",
+                          estimator)
 
-        for result in results:
-            prediction, eind, estimator = result.get()
-            prediction = torch.from_numpy(prediction)
-            self.predictions[:, :, eind] = prediction
-            self.estimators[eind] = estimator
+                prediction = np.empty((self.nobs, self.y_dim))
+                for tr_in, val_in in splitter.split(x_train, y_train):
+                    estimator.fit(x_train[tr_in], y_train[tr_in])
+                    prediction_b = estimator.predict(x_train[val_in])
+                    if len(prediction_b.shape) == 1:
+                        prediction_b = prediction_b[:, None]
+                    prediction[val_in] = prediction_b
 
-        pool.close()
-        pool.join()
+                prediction = torch.from_numpy(prediction)
+                self.predictions[:, :, eind] = prediction
+
+            for estimator in self.estimators:
+                if self.verbose >= 1:
+                    print("Fitting full estimator", estimator)
+                estimator.fit(x_train, y_train)
+
+        else:
+            ctx = mp.get_context('spawn')
+            pool = ctx.Pool(self.ncores)
+            results = []
+            for eind, estimator in enumerate(self.estimators):
+                result = pool.apply_async(_pfunc,
+                    args = (x_train, y_train, splitter, eind, estimator,
+                            self.nobs, self.y_dim, self.verbose),
+                    error_callback=_perr)
+                results.append(result)
+
+            for result in results:
+                prediction, eind, estimator = result.get()
+                prediction = torch.from_numpy(prediction)
+                self.predictions[:, :, eind] = prediction
+                self.estimators[eind] = estimator
+
+            pool.close()
+            pool.join()
 
         if self.gpu:
             self.move_to_gpu()
@@ -528,9 +553,9 @@ class NNW(BaseEstimator):
                 return x
 
             def _initialize_layer(self, layer):
-                nn.init.constant(layer.bias, 0)
+                nn.init.constant_(layer.bias, 0)
                 gain=nn.init.calculate_gain('relu')
-                nn.init.xavier_normal(layer.weight, gain=gain)
+                nn.init.xavier_normal_(layer.weight, gain=gain)
 
         if self.weightining_method == "f_to_w":
             output_dim = self.est_dim
@@ -575,7 +600,7 @@ def _np_to_var(arr):
     arr = torch.from_numpy(arr)
     return arr
 
-def pfunc(x_train, y_train, splitter, eind, estimator, nobs, y_dim,
+def _pfunc(x_train, y_train, splitter, eind, estimator, nobs, y_dim,
           verbose):
     if verbose >= 1:
         print("Calculating prediction for estimator",
@@ -595,5 +620,5 @@ def pfunc(x_train, y_train, splitter, eind, estimator, nobs, y_dim,
 
     return prediction, eind, estimator
 
-def perr(err):
+def _perr(err):
     print("Error during multiprocessing:", err)
