@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 
-from nnw import NNW
+from nnensemble import NNE
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn import svm, linear_model, ensemble, neighbors
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
                   neighbors.KNeighborsRegressor(),
                  ]
 
-    nnw_obj = NNW(
+    nnensemble_obj = NNE(
     verbose=2,
     nn_weight_decay=0.0,
     es=True,
@@ -82,23 +82,23 @@ if __name__ == '__main__':
     nhlayers=5,
     estimators=estimators,
     gpu=True,
-    ncores=3,
+    nworkers=3,
     )
 
-    nnw_obj.fit(x_train, y_train)
+    nnensemble_obj.fit(x_train, y_train)
 
-    nnw_obj.verbose = 0
-    print("Risk on train (ensembler):", - nnw_obj.score(x_train, y_train))
-    #for i, estimator in enumerate(nnw_obj.estimators):
+    nnensemble_obj.verbose = 0
+    print("Risk on train (ensembler):", - nnensemble_obj.score(x_train, y_train))
+    #for i, estimator in enumerate(nnensemble_obj.estimators):
     #    print("Risk on train for estimator", i, "is:",
     #          ((estimator.predict(x_train) - y_train)**2).mean()
     #         )
 
-    print("Risk on test (ensembler):", - nnw_obj.score(x_test, y_test))
+    print("Risk on test (ensembler):", - nnensemble_obj.score(x_test, y_test))
     print("Risk on test (ensembler):",
-          ((nnw_obj.predict(x_test) - y_test)**2).mean()
+          ((nnensemble_obj.predict(x_test) - y_test)**2).mean()
          )
-    for i, estimator in enumerate(nnw_obj.estimators):
+    for i, estimator in enumerate(nnensemble_obj.estimators):
         prediction = estimator.predict(x_test)
         if len(prediction.shape) == 1:
             prediction = prediction[:, None]
@@ -108,8 +108,8 @@ if __name__ == '__main__':
 
     """
     #Check using true density information
-    est_pdf = nnw_obj.predict(x_test)[:, 1:-1]
-    true_pdf = true_pdf_calc(x_test, nnw_obj.y_grid[1:-1][:,None]).T
+    est_pdf = nnensemble_obj.predict(x_test)[:, 1:-1]
+    true_pdf = true_pdf_calc(x_test, nnensemble_obj.y_grid[1:-1][:,None]).T
     sq_errors = (est_pdf - true_pdf)**2
     #print("Squared density errors for test:\n", sq_errors)
     print("\nAverage squared density errors for test:\n", sq_errors.mean())

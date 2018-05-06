@@ -31,7 +31,7 @@ from sklearn import svm, linear_model
 
 import multiprocessing as mp
 
-class NNW(BaseEstimator):
+class NNE(BaseEstimator):
     """
     Stacks many estimators using deep foward neural networks.
 
@@ -43,6 +43,8 @@ class NNW(BaseEstimator):
         Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
     splitter : object
         Chooses the splitting of data to generate the predictions of the estimators. Must be an instance of a class from sklearn.model_selection (or behave similatly), defaults to "ten-fold".
+    nworkers : integet
+        Number of worker processes to use for parallel fitting the models.
 
     nhlayers : integer
         Number of hidden layers for the neural network. If set to 0, then it degenerates to linear regression.
@@ -87,7 +89,7 @@ class NNW(BaseEstimator):
                  estimators=None,
                  weightining_method="f_to_w",
                  splitter=None,
-                 ncores=2,
+                 nworkers=2,
 
                  nhlayers=4,
                  hls_multiplier=20,
@@ -153,7 +155,7 @@ class NNW(BaseEstimator):
         self.predictions = np.empty((self.nobs, self.y_dim,
                                      self.est_dim))
 
-        if self.ncores == 1:
+        if self.nworkers == 1:
             self.predictions = np.empty((self.nobs, self.y_dim,
                                          self.est_dim))
             for eind, estimator in enumerate(self.estimators):
@@ -179,7 +181,7 @@ class NNW(BaseEstimator):
 
         else:
             ctx = mp.get_context('spawn')
-            pool = ctx.Pool(self.ncores)
+            pool = ctx.Pool(self.nworkers)
             results = []
             for eind, estimator in enumerate(self.estimators):
                 result = pool.apply_async(_pfunc,

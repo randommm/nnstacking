@@ -21,13 +21,13 @@ try:
 except ImportError:
     from distutils.core import setup
 
-setup(name='nnw',
+setup(name='nnensemble',
       version='0.0.1',
-      description='Weighting of predictors using neural networks',
+      description='Emsembler of predictors using neural networks',
       author='Marco Inacio',
       author_email='pythonpackages@marcoinacio.com',
-      url='http://nnw.marcoinacio.com/',
-      packages=['nnw'],
+      url='http://nnensemble.marcoinacio.com/',
+      packages=['nnensemble'],
       keywords = ['neural networks', 'predictors'],
       license='GPL3',
       install_requires=['numpy', 'scikit-learn']
