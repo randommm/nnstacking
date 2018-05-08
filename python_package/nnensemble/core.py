@@ -43,8 +43,8 @@ class NNE(BaseEstimator):
         Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
     splitter : object
         Chooses the splitting of data to generate the predictions of the estimators. Must be an instance of a class from sklearn.model_selection (or behave similatly), defaults to "ten-fold".
-    nworkers : integet
-        Number of worker processes to use for parallel fitting the models.
+    nworkers : integer
+        Number of worker processes to use for parallel fitting the models. If None, then will use all cpus in the machine.
 
     nhlayers : integer
         Number of hidden layers for the neural network. If set to 0, then it degenerates to linear regression.
@@ -395,22 +395,7 @@ class NNE(BaseEstimator):
                         continue
 
                     optimizer.zero_grad()
-                    output = self.neural_net(nnx_this)
-                    if self.ensemble_method == "f_to_m":
-                        output = output.view(-1, self.est_dim,
-                            self.est_dim)
-                        output_res = output.new(output.shape[0],
-                            self.est_dim)
-                        evec = output.new_ones(self.est_dim)[:, None]
-                        for i in range(output.shape[0]):
-                            output[i] = torch.potri(output[i])
-                            numerator = torch.mm(output[i], evec)
-                            denominator = torch.mm(numerator.t(), evec)
-                            div_res = numerator / denominator
-                            output_res[i] = div_res[:, 0]
-                        output = output_res
-                    output = nnpred_this * output[:, None, :]
-                    output = output.sum(2)
+                    output = self._calculate_weights(nnx_this,                       nnpred_this)
 
                     # Main loss
                     loss = self.criterion(output, nny_this)
@@ -442,6 +427,31 @@ class NNE(BaseEstimator):
                       avgloss, flush=True)
 
             return avgloss
+
+    def _calculate_weights(self, nnx, nnpred):
+        output = self.neural_net(nnx)
+        if self.ensemble_method == "f_to_m":
+            output = output.view(-1, self.est_dim,
+                self.est_dim)
+            output_res = output.new(output.shape[0],
+                self.est_dim)
+            evec = output.new_ones(self.est_dim)[:, None]
+            for i in range(output.shape[0]):
+                div_res = output[i]
+                #output[i] = output[i].potri()
+                div_res = div_res.tril()
+                div_res = torch.mm(output[i],
+                    div_res.t())
+                numerator = torch.mm(div_res, evec)
+                denominator = torch.mm(numerator.t(), evec)
+                div_res = numerator / denominator
+                output_res[i] = div_res[:, 0]
+            output = output_res
+        output = nnpred * output[:, None, :]
+        output = output.sum(2)
+
+        return output
+
 
     def score(self, x_test, y_test):
         with torch.no_grad():
@@ -484,10 +494,8 @@ class NNE(BaseEstimator):
                         nnpred_next = nnpred_next.cuda(async=True)
 
                 if i != 0:
-                    output = self.neural_net(nnx_this)
-                    output = nnpred_this * output[:, None, :]
-                    output = output.sum(2)
-
+                    output = self._calculate_weights(nnx_this,
+                        nnpred_this)
                     loss = self.criterion(output, nny_this)
 
                     loss_vals.append(loss.data.cpu().numpy())
@@ -524,9 +532,7 @@ class NNE(BaseEstimator):
                 nnx = nnx.cuda()
                 nnpred = nnpred.cuda()
 
-            output = self.neural_net(nnx)
-            output = nnpred * output[:, None, :]
-            output = output.sum(2)
+            output = self._calculate_weights(nnx, nnpred)
 
             return output.data.cpu().numpy()
 

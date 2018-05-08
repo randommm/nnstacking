@@ -42,6 +42,19 @@ if __name__ == '__main__':
     print(max(y_train))
 
     estimators = [
+                  #svm.SVR(),
+                  neighbors.KNeighborsRegressor(),
+
+                  ensemble.RandomForestRegressor(),
+                  ensemble.GradientBoostingRegressor(),
+                  ensemble.AdaBoostRegressor(),
+                  ensemble.BaggingRegressor(),
+
+                  linear_model.PassiveAggressiveRegressor(),
+                  linear_model.OrthogonalMatchingPursuit(),
+                  linear_model.HuberRegressor(),
+                  linear_model.BayesianRidge(),
+
                   linear_model.LinearRegression(),
 
                   linear_model.Lasso(alpha=0.5),
@@ -59,19 +72,6 @@ if __name__ == '__main__':
                   linear_model.LassoLars(alpha=0.5),
                   linear_model.LassoLars(alpha=1.0),
                   linear_model.LassoLars(alpha=2.0),
-
-                  linear_model.PassiveAggressiveRegressor(),
-                  linear_model.OrthogonalMatchingPursuit(),
-                  linear_model.HuberRegressor(),
-                  linear_model.BayesianRidge(),
-
-                  ensemble.RandomForestRegressor(),
-                  ensemble.GradientBoostingRegressor(),
-                  ensemble.AdaBoostRegressor(),
-                  ensemble.BaggingRegressor(),
-
-                  #svm.SVR(),
-                  neighbors.KNeighborsRegressor(),
                  ]
 
     nnensemble_obj = NNE(
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     estimators=estimators,
     gpu=True,
     nworkers=3,
-    #ensemble_method="f_to_m",
+    ensemble_method="f_to_m",
     )
 
     nnensemble_obj.fit(x_train, y_train)
