@@ -440,8 +440,7 @@ class NNE(BaseEstimator):
                 div_res = output[i]
                 #output[i] = output[i].potri()
                 div_res = div_res.tril()
-                div_res = torch.mm(output[i],
-                    div_res.t())
+                div_res = torch.mm(div_res, div_res.t())
                 numerator = torch.mm(div_res, evec)
                 denominator = torch.mm(numerator.t(), evec)
                 div_res = numerator / denominator
