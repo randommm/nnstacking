@@ -70,7 +70,7 @@ if __name__ == '__main__':
                   ensemble.AdaBoostRegressor(),
                   ensemble.BaggingRegressor(),
 
-                  svm.SVR(),
+                  #svm.SVR(),
                   neighbors.KNeighborsRegressor(),
                  ]
 
@@ -83,6 +83,7 @@ if __name__ == '__main__':
     estimators=estimators,
     gpu=True,
     nworkers=3,
+    #ensemble_method="f_to_m",
     )
 
     nnensemble_obj.fit(x_train, y_train)

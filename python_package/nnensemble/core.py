@@ -39,7 +39,7 @@ class NNE(BaseEstimator):
     ----------
     estimators : list
         List of estimators to use. They must be sklearn-compatible.
-    weightining_method : str
+    ensemble_method : str
         Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
     splitter : object
         Chooses the splitting of data to generate the predictions of the estimators. Must be an instance of a class from sklearn.model_selection (or behave similatly), defaults to "ten-fold".
@@ -87,7 +87,7 @@ class NNE(BaseEstimator):
     """
     def __init__(self,
                  estimators=None,
-                 weightining_method="f_to_w",
+                 ensemble_method="f_to_w",
                  splitter=None,
                  nworkers=2,
 
@@ -396,6 +396,19 @@ class NNE(BaseEstimator):
 
                     optimizer.zero_grad()
                     output = self.neural_net(nnx_this)
+                    if self.ensemble_method == "f_to_m":
+                        output = output.view(-1, self.est_dim,
+                            self.est_dim)
+                        output_res = output.new(output.shape[0],
+                            self.est_dim)
+                        evec = output.new_ones(self.est_dim)[:, None]
+                        for i in range(output.shape[0]):
+                            output[i] = torch.potri(output[i])
+                            numerator = torch.mm(output[i], evec)
+                            denominator = torch.mm(numerator.t(), evec)
+                            div_res = numerator / denominator
+                            output_res[i] = div_res[:, 0]
+                        output = output_res
                     output = nnpred_this * output[:, None, :]
                     output = output.sum(2)
 
@@ -520,11 +533,10 @@ class NNE(BaseEstimator):
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
             def __init__(self, input_dim, output_dim, nhlayers,
-                         hls_multiplier):
+                         output_hl_size):
                 super(NeuralNet, self).__init__()
 
                 next_input_l_size = input_dim
-                output_hl_size = int(output_dim * hls_multiplier)
                 self.m = nn.Dropout(p=0.5)
 
                 for i in range(nhlayers):
@@ -559,12 +571,13 @@ class NNE(BaseEstimator):
                 gain=nn.init.calculate_gain('relu')
                 nn.init.xavier_normal_(layer.weight, gain=gain)
 
-        if self.weightining_method == "f_to_w":
+        if self.ensemble_method == "f_to_w":
             output_dim = self.est_dim
-        elif self.weightining_method == "f_to_m":
+        elif self.ensemble_method == "f_to_m":
             output_dim = self.est_dim ** 2
-        self.neural_net = NeuralNet(self.x_dim, self.est_dim,
-                                    self.nhlayers, self.hls_multiplier)
+        output_hl_size = int(self.est_dim * self.hls_multiplier)
+        self.neural_net = NeuralNet(self.x_dim, output_dim,
+                                    self.nhlayers, output_hl_size)
 
     def __getstate__(self):
         d = self.__dict__.copy()
