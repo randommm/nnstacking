@@ -33,7 +33,7 @@ from generate_data import generate_data, true_pdf_calc
 
 if __name__ == '__main__':
     n_train = 100_000
-    n_test = 4000
+    n_test = 5_000
     x_train, y_train = generate_data(n_train)
     x_test, y_test = generate_data(n_test)
 
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     nn_weight_decay=0.0,
     es=True,
     hls_multiplier=100,
-    nhlayers=5,
+    nhlayers=10,
     estimators=estimators,
     gpu=True,
     nworkers=3,
@@ -99,12 +99,18 @@ if __name__ == '__main__':
     print("Risk on test (ensembler):",
           ((nnensemble_obj.predict(x_test) - y_test)**2).mean()
          )
+
+    risks = []
     for i, estimator in enumerate(nnensemble_obj.estimators):
         prediction = estimator.predict(x_test)
         if len(prediction.shape) == 1:
             prediction = prediction[:, None]
-        print("Risk on test for estimator", i, "is:",
-              ((prediction - y_test)**2).mean()
+            risks.append(((prediction - y_test)**2).mean())
+
+    ind_risks = sorted(range(len(risks)), key=lambda k: risks[k])
+    for ind_risk in ind_risks:
+        print("Risk on test for estimator", ind_risk, "is:",
+              risks[ind_risk]
              )
 
     """

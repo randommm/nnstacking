@@ -90,7 +90,7 @@ class NNE(BaseEstimator):
     """
     def __init__(self,
                  estimators=None,
-                 ensemble_method="f_to_w",
+                 ensemble_method="f_to_m",
                  ensemble_addition=True,
                  splitter=None,
                  nworkers=2,
@@ -107,10 +107,10 @@ class NNE(BaseEstimator):
 
                  nepoch=200,
 
-                 batch_initial=50,
+                 batch_initial=200,
                  batch_step_multiplier=1.1,
-                 batch_step_epoch_expon=1.1,
-                 batch_max_size=500,
+                 batch_step_epoch_expon=1.4,
+                 batch_max_size=1000,
 
                  batch_test_size=2000,
                  gpu=True,
