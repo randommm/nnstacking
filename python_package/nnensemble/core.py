@@ -30,6 +30,7 @@ from sklearn.model_selection import ShuffleSplit, KFold
 from sklearn import svm, linear_model
 
 import multiprocessing as mp
+from copy import deepcopy
 
 class NNE(BaseEstimator):
     """
@@ -41,6 +42,8 @@ class NNE(BaseEstimator):
         List of estimators to use. They must be sklearn-compatible.
     ensemble_method : str
         Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
+    ensemble_addition : bool
+        Additional output from the neural network to the ensembler.
     splitter : object
         Chooses the splitting of data to generate the predictions of the estimators. Must be an instance of a class from sklearn.model_selection (or behave similatly), defaults to "ten-fold".
     nworkers : integer
@@ -88,6 +91,7 @@ class NNE(BaseEstimator):
     def __init__(self,
                  estimators=None,
                  ensemble_method="f_to_w",
+                 ensemble_addition=True,
                  splitter=None,
                  nworkers=2,
 
@@ -309,6 +313,7 @@ class NNE(BaseEstimator):
                     if avloss <= self.best_loss_val:
                         self.best_loss_val = avloss
                         best_state_dict = self.neural_net.state_dict()
+                        best_state_dict = deepcopy(best_state_dict)
                         es_tries = 0
                         if self.verbose >= 2:
                             print("This is the lowest validation loss",
@@ -430,6 +435,10 @@ class NNE(BaseEstimator):
 
     def _calculate_weights(self, nnx, nnpred):
         output = self.neural_net(nnx)
+
+        if self.ensemble_addition:
+            output, extra = output[:, :-1], output[:, [-1]]
+
         if self.ensemble_method == "f_to_m":
             output = output.view(-1, self.est_dim,
                 self.est_dim)
@@ -448,6 +457,9 @@ class NNE(BaseEstimator):
             output = output_res
         output = nnpred * output[:, None, :]
         output = output.sum(2)
+
+        if self.ensemble_addition:
+            output = output + extra
 
         return output
 
@@ -538,11 +550,16 @@ class NNE(BaseEstimator):
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
             def __init__(self, input_dim, output_dim, nhlayers,
-                         output_hl_size):
+                         output_hl_size, softmax):
                 super(NeuralNet, self).__init__()
 
                 next_input_l_size = input_dim
                 self.m = nn.Dropout(p=0.5)
+
+                if softmax:
+                    self.transform = torch.nn.Softmax(-1)
+                else:
+                    self.transform = _dummy_func
 
                 for i in range(nhlayers):
                     lname = "fc_" + str(i)
@@ -559,7 +576,6 @@ class NNE(BaseEstimator):
 
                 self.nhlayers = nhlayers
                 self.output_dim = output_dim
-                self.softmax = torch.nn.Softmax(-1)
 
             def forward(self, x):
                 for i in range(self.nhlayers):
@@ -568,7 +584,7 @@ class NNE(BaseEstimator):
                     x = fcn(F.relu(fc(x)))
                     x = self.m(x)
                 x = self.fc_last(x)
-                x = self.softmax(x)
+                x = self.transform(x)
                 return x
 
             def _initialize_layer(self, layer):
@@ -578,11 +594,16 @@ class NNE(BaseEstimator):
 
         if self.ensemble_method == "f_to_w":
             output_dim = self.est_dim
+            softmax = False
         elif self.ensemble_method == "f_to_m":
             output_dim = self.est_dim ** 2
+            softmax = True
+        if self.ensemble_addition:
+            output_dim += 1
         output_hl_size = int(self.est_dim * self.hls_multiplier)
         self.neural_net = NeuralNet(self.x_dim, output_dim,
-                                    self.nhlayers, output_hl_size)
+                                    self.nhlayers, output_hl_size,
+                                    softmax)
 
     def __getstate__(self):
         d = self.__dict__.copy()
@@ -642,3 +663,6 @@ def _pfunc(x_train, y_train, splitter, eind, estimator, nobs, y_dim,
 
 def _perr(err):
     print("Error during multiprocessing:", err)
+
+def _dummy_func(x):
+    return x
