@@ -266,7 +266,7 @@ class NNE(BaseEstimator):
                                   x_train.shape[0])
             self.loss_history_validation = []
 
-        batch_max_size = min(self.batch_max_size, x_train.shape[0])
+        batch_max_size = min(self.batch_max_size, nnx_train.shape[0])
         self.loss_history_train = []
 
         start_time = time.process_time()
