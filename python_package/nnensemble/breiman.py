@@ -47,7 +47,7 @@ class LinearStack(BaseEstimator):
         self.train_mse = adj[1]/len(y_train)
 
         if self.verbose > 0:
-            print('Ensemble fitted MSE (train): ', self.train_error/len(y_train))
+            print('Ensemble fitted MSE (train): ', self.train_mse/len(y_train))
 
         return self
 
