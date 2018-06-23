@@ -271,7 +271,8 @@ class NNE(BaseEstimator):
 
         start_time = time.process_time()
 
-        optimizer = optim.Adamax(self.neural_net.parameters(), lr=0.004,
+        lr = 0.1
+        optimizer = optim.Adamax(self.neural_net.parameters(), lr=lr,
                                  weight_decay=self.nn_weight_decay)
         es_penal_tries = 0
         for _ in range_epoch:
@@ -337,14 +338,21 @@ class NNE(BaseEstimator):
 
                 self.epoch_count += 1
             except RuntimeError as err:
-                if self.epoch_count == 0:
-                    raise err
+                #if self.epoch_count == 0:
+                #    raise err
                 if self.verbose >= 2:
                     print("Runtime error problem probably due to",
-                           "learning rate.")
+                           "high learning rate.")
                     print("Decreasing learning rate by half.")
-                optimizer.param_groups[0]['lr'] *= 0.5
-                self.neural_net.load_state_dict(best_state_dict)
+
+                self._construct_neural_net()
+                if self.gpu:
+                    self.move_to_gpu()
+                lr /= 2
+                optimizer = optim.Adamax(self.neural_net.parameters(),
+                    lr=lr, weight_decay=self.nn_weight_decay)
+                self.epoch_count = 0
+
                 continue
             except KeyboardInterrupt:
                 if self.epoch_count > 0 and self.es:
