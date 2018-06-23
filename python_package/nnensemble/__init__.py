@@ -1,6 +1,6 @@
 from .core import NNE
-from .breiman import linear_stack
+from .breiman import LinearStack
 
 __version__ = "0.0.1"
 
-__all__ = ["NNE", "linear_stack"]
+__all__ = ["NNE", "LinearStack"]
