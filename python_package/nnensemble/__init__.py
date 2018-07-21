@@ -1,5 +1,5 @@
-from .core import NNE
-from .breiman import LinearStack
+from .nne import NNE
+from .linear_stack import LinearStack
 
 __version__ = "0.0.1"
 

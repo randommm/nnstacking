@@ -569,15 +569,17 @@ class NNE(BaseEstimator):
                 else:
                     self.transform = _dummy_func
 
+                self.llayers = []
+                self.normllayers = []
                 for i in range(nhlayers):
-                    lname = "fc_" + str(i)
-                    lnname = "fc_n_" + str(i)
-                    self.__setattr__(lname,
+                    self.llayers.append(
                         nn.Linear(next_input_l_size, output_hl_size))
-                    self.__setattr__(lnname,
+                    self.normllayers.append(
                         nn.BatchNorm1d(output_hl_size))
                     next_input_l_size = output_hl_size
-                    self._initialize_layer(self.__getattr__(lname))
+                    self._initialize_layer(self.llayers[i])
+                self.llayers = nn.ModuleList(self.llayers)
+                self.normllayers = nn.ModuleList(self.normllayers)
 
                 self.fc_last = nn.Linear(next_input_l_size, output_dim)
                 self._initialize_layer(self.fc_last)
@@ -587,9 +589,8 @@ class NNE(BaseEstimator):
 
             def forward(self, x):
                 for i in range(self.nhlayers):
-                    fc = self.__getattr__("fc_" + str(i))
-                    fcn = self.__getattr__("fc_n_" + str(i))
-                    x = fcn(F.relu(fc(x)))
+                    x = F.elu(self.llayers[i](x))
+                    x = self.normllayers[i](x)
                     x = self.m(x)
                 x = self.fc_last(x)
                 x = self.transform(x)
