@@ -41,7 +41,8 @@ class NNE(BaseEstimator):
     estimators : list
         List of estimators to use. They must be sklearn-compatible.
     ensemble_method : str
-        Base term for penalizaing the size of beta's of the Fourier Series. This penalization occurs for training only (does not affect score method nor validation set if es=True).
+        Chooses the ensembling method. "f_to_m" for features to matrix m and
+        "f_to_w" for features to directly to weights.
     ensemble_addition : bool
         Additional output from the neural network to the ensembler.
     splitter : object
@@ -408,7 +409,7 @@ class NNE(BaseEstimator):
                         continue
 
                     optimizer.zero_grad()
-                    output = self._calculate_weights(nnx_this,                       nnpred_this)
+                    output = self._ensemblize(nnx_this,                       nnpred_this)
 
                     # Main loss
                     loss = self.criterion(output, nny_this)
@@ -441,11 +442,13 @@ class NNE(BaseEstimator):
 
             return avgloss
 
-    def _calculate_weights(self, nnx, nnpred):
+    def _calculate_weights(self, nnx):
         output = self.neural_net(nnx)
 
         if self.ensemble_addition:
             output, extra = output[:, :-1], output[:, [-1]]
+        else:
+            extra = 0
 
         if self.ensemble_method == "f_to_m":
             output = output.view(-1, self.est_dim,
@@ -463,6 +466,29 @@ class NNE(BaseEstimator):
                 div_res = numerator / denominator
                 output_res[i] = div_res[:, 0]
             output = output_res
+
+        return output, extra
+
+    def get_weights(self, x_pred):
+        """
+        Get the ensembler weights given a x_pred covariate matrix
+
+        Returns
+        -------
+        Tuple (output, extra), where output is the weights and extra is
+        the additional output from the neural network (by definition,
+        extra is 0 if self.ensemble_addition == False)
+        """
+        with torch.no_grad():
+            nnx = _np_to_var(x_pred)
+            if self.gpu:
+                nnx = nnx.cuda()
+            output, extra = self._calculate_weights(nnx)
+        return output, extra
+
+    def _ensemblize(self, nnx, nnpred):
+        output, extra = self._calculate_weights(nnx)
+
         output = nnpred * output[:, None, :]
         output = output.sum(2)
 
@@ -470,7 +496,6 @@ class NNE(BaseEstimator):
             output = output + extra
 
         return output
-
 
     def score(self, x_test, y_test):
         with torch.no_grad():
@@ -513,7 +538,7 @@ class NNE(BaseEstimator):
                         nnpred_next = nnpred_next.cuda(async=True)
 
                 if i != 0:
-                    output = self._calculate_weights(nnx_this,
+                    output = self._ensemblize(nnx_this,
                         nnpred_this)
                     loss = self.criterion(output, nny_this)
 
@@ -551,7 +576,7 @@ class NNE(BaseEstimator):
                 nnx = nnx.cuda()
                 nnpred = nnpred.cuda()
 
-            output = self._calculate_weights(nnx, nnpred)
+            output = self._ensemblize(nnx, nnpred)
 
             return output.data.cpu().numpy()
 

@@ -126,3 +126,6 @@ if __name__ == '__main__':
     plt.plot(est_pdf[1])
     plt.show()
     """
+
+    # Get ensembler weights
+    nnensemble_obj.get_weights(x_test)
