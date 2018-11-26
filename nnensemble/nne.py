@@ -50,10 +50,10 @@ class NNE(BaseEstimator):
     nworkers : integer
         Number of worker processes to use for parallel fitting the models. If None, then will use all cpus in the machine.
 
-    nhlayers : integer
+    num_layers : integer
         Number of hidden layers for the neural network. If set to 0, then it degenerates to linear regression.
-    hls_multiplier : integer
-        Multiplier for the size of the hidden layers of the neural network. If set to 1, then each of them will have ncomponents components. If set to 2, then 2 * ncomponents components, and so on.
+    hidden_size : integer
+        Number of nodes (neurons) of each hidden layer.
     criterion : object
         Loss criterion for the neural network, defaults to torch.nn.MSELoss().
     nn_weight_decay : object
@@ -96,8 +96,8 @@ class NNE(BaseEstimator):
                  splitter=None,
                  nworkers=2,
 
-                 nhlayers=4,
-                 hls_multiplier=20,
+                 num_layers=10,
+                 hidden_size=100,
                  criterion=None,
                  nn_weight_decay=0,
 
@@ -231,8 +231,8 @@ class NNE(BaseEstimator):
 
         assert(self.nn_weight_decay >= 0)
 
-        assert(self.nhlayers >= 0)
-        assert(self.hls_multiplier > 0)
+        assert(self.num_layers >= 0)
+        assert(self.hidden_size > 0)
 
         nnx_train = np.array(x_train, dtype='f4')
         nny_train = np.array(y_train, dtype='f4')
@@ -582,7 +582,7 @@ class NNE(BaseEstimator):
 
     def _construct_neural_net(self):
         class NeuralNet(nn.Module):
-            def __init__(self, input_dim, output_dim, nhlayers,
+            def __init__(self, input_dim, output_dim, num_layers,
                          output_hl_size, softmax):
                 super(NeuralNet, self).__init__()
 
@@ -596,7 +596,7 @@ class NNE(BaseEstimator):
 
                 self.llayers = []
                 self.normllayers = []
-                for i in range(nhlayers):
+                for i in range(num_layers):
                     self.llayers.append(
                         nn.Linear(next_input_l_size, output_hl_size))
                     self.normllayers.append(
@@ -609,11 +609,11 @@ class NNE(BaseEstimator):
                 self.fc_last = nn.Linear(next_input_l_size, output_dim)
                 self._initialize_layer(self.fc_last)
 
-                self.nhlayers = nhlayers
+                self.num_layers = num_layers
                 self.output_dim = output_dim
 
             def forward(self, x):
-                for i in range(self.nhlayers):
+                for i in range(self.num_layers):
                     x = F.elu(self.llayers[i](x))
                     x = self.normllayers[i](x)
                     x = self.m(x)
@@ -634,9 +634,9 @@ class NNE(BaseEstimator):
             softmax = True
         if self.ensemble_addition:
             output_dim += 1
-        output_hl_size = int(self.est_dim * self.hls_multiplier)
+        output_hl_size = int(self.hidden_size)
         self.neural_net = NeuralNet(self.x_dim, output_dim,
-                                    self.nhlayers, output_hl_size,
+                                    self.num_layers, output_hl_size,
                                     softmax)
 
     def __getstate__(self):
