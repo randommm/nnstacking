@@ -128,6 +128,23 @@ class NNE(BaseEstimator):
                               "where s is the sample size and "
                               "f is the number of features")
 
+
+    """
+    Fit models and neural network.
+
+    Parameters
+    ----------
+    x_train : array
+        Matrix of features
+    y_train : array
+        Vector of response variable.
+    predictions : array
+        Array of dimensions (nobs, y_dim, est_dim) with the predictions
+        to be used by the model. If None, then will generate them
+        automatically using cross validation. If not None, then the
+        estimators passed to constructor will not be trained, i.e.
+        you must train them before!
+    """
     def fit(self, x_train, y_train, predictions=None):
         self.gpu = self.gpu and torch.cuda.is_available()
 
