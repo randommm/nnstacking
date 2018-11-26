@@ -129,3 +129,14 @@ if __name__ == '__main__':
 
     # Get ensembler weights
     nnensemble_obj.get_weights(x_test)
+
+    nnensemble_obj2 = NNE(
+    verbose=2,
+    nn_weight_decay=0.0,
+    es=True,
+    hidden_size=100,
+    num_layers=10,
+    estimators=nnensemble_obj.estimators,
+    gpu=True,
+    nworkers=3,
+    ).fit(x_train, y_train, nnensemble_obj.predictions)

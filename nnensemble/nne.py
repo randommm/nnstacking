@@ -93,7 +93,7 @@ class NNE(BaseEstimator):
                  estimators=None,
                  ensemble_method="f_to_m",
                  ensemble_addition=True,
-                 splitter=None,
+                 splitter=10,
                  nworkers=2,
 
                  num_layers=10,
@@ -128,7 +128,7 @@ class NNE(BaseEstimator):
                               "where s is the sample size and "
                               "f is the number of features")
 
-    def fit(self, x_train, y_train):
+    def fit(self, x_train, y_train, predictions=None):
         self.gpu = self.gpu and torch.cuda.is_available()
 
         self._check_dims(x_train, y_train)
@@ -146,14 +146,20 @@ class NNE(BaseEstimator):
                 linear_model.LinearRegression(),
                 linear_model.Lasso(),
                 linear_model.Ridge(),
-                #svm.SVR()
                 ]
 
         self.est_dim = len(self.estimators)
         self._construct_neural_net()
 
-        if self.splitter is None:
-            splitter = KFold(n_splits=10, shuffle=True, random_state=0)
+        if predictions is not None:
+            assert(predictions.shape == (self.nobs, self.y_dim,
+                                         self.est_dim))
+            self.predictions = predictions
+            return self.improve_fit(x_train, y_train, self.nepoch)
+
+        if isinstance(self.splitter, int):
+            splitter = KFold(n_splits=self.splitter,
+                shuffle=True, random_state=0)
         else:
             splitter = self.splitter
 
@@ -204,9 +210,6 @@ class NNE(BaseEstimator):
             pool.close()
             pool.join()
 
-        if self.gpu:
-            self.move_to_gpu()
-
         return self.improve_fit(x_train, y_train, self.nepoch)
 
     def move_to_gpu(self):
@@ -222,6 +225,9 @@ class NNE(BaseEstimator):
         return self
 
     def improve_fit(self, x_train, y_train, nepoch):
+        if self.gpu:
+            self.move_to_gpu()
+
         self._check_dims(x_train, y_train)
         assert(self.batch_initial >= 1)
         assert(self.batch_step_multiplier > 0)
