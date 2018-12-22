@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 
-from nnensemble import NNE
+from nnensemble import NNE, NNPredict
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn import svm, linear_model, ensemble, neighbors
 
@@ -32,7 +32,7 @@ import os
 from generate_data import generate_data, true_pdf_calc
 
 if __name__ == '__main__':
-    n_train = 100_000
+    n_train = 1_000
     n_test = 5_000
     x_train, y_train = generate_data(n_train)
     x_test, y_test = generate_data(n_test)
@@ -85,8 +85,29 @@ if __name__ == '__main__':
     nworkers=3,
     ensemble_method="f_to_m",
     )
-
     nnensemble_obj.fit(x_train, y_train)
+
+    nnensemble_obj2 = NNE(
+    verbose=2,
+    nn_weight_decay=0.0,
+    es=True,
+    hidden_size=100,
+    num_layers=10,
+    estimators=nnensemble_obj.estimators,
+    gpu=True,
+    nworkers=3,
+    ).fit(x_train, y_train, nnensemble_obj.predictions)
+
+    nnpredict_obj = NNPredict(
+    verbose=2,
+    nn_weight_decay=0.0,
+    es=True,
+    hidden_size=100,
+    num_layers=10,
+    gpu=True,
+    dataloader_workers=3,
+    )
+    nnpredict_obj.fit(x_train, y_train)
 
     nnensemble_obj.verbose = 0
     print("Risk on train (ensembler):", - nnensemble_obj.score(x_train, y_train))
@@ -98,6 +119,16 @@ if __name__ == '__main__':
     print("Risk on test (ensembler):", - nnensemble_obj.score(x_test, y_test))
     print("Risk on test (ensembler):",
           ((nnensemble_obj.predict(x_test) - y_test)**2).mean()
+         )
+
+    print("Risk on test (ensembler 2):", - nnensemble_obj2.score(x_test, y_test))
+    print("Risk on test (ensembler 2):",
+          ((nnensemble_obj2.predict(x_test) - y_test)**2).mean()
+         )
+
+    print("Risk on test (direct neural network):", - nnpredict_obj.score(x_test, y_test))
+    print("Risk on test (direct neural network):",
+          ((nnpredict_obj.predict(x_test) - y_test)**2).mean()
          )
 
     risks = []
@@ -129,14 +160,3 @@ if __name__ == '__main__':
 
     # Get ensembler weights
     nnensemble_obj.get_weights(x_test)
-
-    nnensemble_obj2 = NNE(
-    verbose=2,
-    nn_weight_decay=0.0,
-    es=True,
-    hidden_size=100,
-    num_layers=10,
-    estimators=nnensemble_obj.estimators,
-    gpu=True,
-    nworkers=3,
-    ).fit(x_train, y_train, nnensemble_obj.predictions)
