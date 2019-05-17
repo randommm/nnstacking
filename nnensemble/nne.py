@@ -96,7 +96,7 @@ class NNE(BaseEstimator):
                  splitter=10,
                  nworkers=2,
 
-                 num_layers=10,
+                 num_layers=3,
                  hidden_size=100,
                  criterion=None,
                  nn_weight_decay=0,
