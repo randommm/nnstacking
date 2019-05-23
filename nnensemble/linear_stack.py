@@ -21,14 +21,31 @@ from sklearn.model_selection import cross_val_predict
 from scipy.optimize import nnls
 
 class LinearStack(BaseEstimator):
-    '''
-    Breiman Stacking
-    '''
+    """
+    Stacks many estimators using Breiman Stacking.
+
+    Parameters
+    ----------
+    estimators : list
+        List of estimators to use. They must be sklearn-compatible.
+    verbose : integer
+        Level verbosity. Set to 0 for silent mode.
+    """
     def __init__(self, estimators = None, verbose = 1):
         for prop in dir():
             if prop != "self":
                 setattr(self, prop, locals()[prop])
 
+    """
+    Fit models and Breiman Stacking coefficients.
+
+    Parameters
+    ----------
+    x_train : array
+        Matrix of features
+    y_train : array
+        Vector of response variable.
+    """
     def fit(self, x_train, y_train):
         z = np.zeros(len(y_train)).reshape(len(y_train),1)
 
@@ -51,6 +68,14 @@ class LinearStack(BaseEstimator):
 
         return self
 
+    """
+    Predict y.
+
+    Parameters
+    ----------
+    x : array
+        Matrix of features
+    """
     def predict(self, x):
         z = np.zeros(x.shape[0]).reshape(x.shape[0], 1)
         for i in range(len(self.estimators)):
@@ -58,5 +83,16 @@ class LinearStack(BaseEstimator):
 
         return np.dot(np.delete(z, 0, 1), self.parameters)
 
+    """
+    Calculate the opposite of mean squared error between prediction and
+    x; i.e.: (- (self.pred(x) - y)**2).mean()
+
+    Parameters
+    ----------
+    x : array
+        Matrix of features
+    y : array
+        Vector of response variable.
+    """
     def score(self, x, y):
         return np.mean(np.square(self.predict(x) - np.array(y)))

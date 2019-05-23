@@ -520,6 +520,17 @@ class NNE(BaseEstimator):
 
         return output
 
+    """
+    Calculate the opposite of mean squared error between prediction and
+    x_test; i.e.: (- (self.pred(x_test) - y_test)**2).mean()
+
+    Parameters
+    ----------
+    x_test : array
+        Matrix of features
+    y_test : array
+        Vector of response variable.
+    """
     def score(self, x_test, y_test):
         with torch.no_grad():
             self._check_dims(x_test, y_test)
@@ -574,6 +585,14 @@ class NNE(BaseEstimator):
 
             return -1 * np.average(loss_vals, weights=batch_sizes)
 
+    """
+    Predict y.
+
+    Parameters
+    ----------
+    x_pred : array
+        Matrix of features
+    """
     def predict(self, x_pred):
         with torch.no_grad():
             self._check_dims(x_pred, np.empty((1,1)))

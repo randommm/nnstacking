@@ -38,31 +38,23 @@ def _np_to_tensor(arr):
 
 class NNPredict(BaseEstimator):
     """
-    Estimate univariate density using Bayesian Fourier Series.
-    This estimator only works with data the lives in
-    [0, 1], however, the class implements estimators to automatically
-    transform user inputted data to [0, 1]. See parameter `transform`
-    below.
+    Regression estimation using neural networks
 
     Parameters
     ----------
-    ncomponents : integer
-        Maximum number of components of the Fourier series
-        expansion.
-
     nn_weight_decay : object
-        Mulplier for penalizaing the size of neural network weights. This penalization occurs for training only (does not affect score estimator nor validation of early stopping).
-
+        Mulplier for penalizaing the size of neural network weights. This penalization occurs for training only (does not affect score method nor validation of early stopping).
     num_layers : integer
         Number of hidden layers for the neural network. If set to 0, then it degenerates to linear regression.
     hidden_size : integer
-        Multiplier for the size of the hidden layers of the neural network. If set to 1, then each of them will have ncomponents components. If set to 2, then 2 * ncomponents components, and so on.
+        Number of nodes (neurons) of each hidden layer.
+    criterion : object
+        Loss criterion for the neural network, defaults to torch.nn.MSELoss().
 
     es : bool
         If true, then will split the training set into training and validation and calculate the validation internally on each epoch and check if the validation loss increases or not.
-    es_validation_set_size : float, int
-        Size of the validation set if es == True, given as proportion of train set or as absolute number. If None, then `round(min(x_train.shape[0] * 0.10, 5000))` will be used.
-n_train = x_train.shape[0] - n_test
+    es_validation_set : float
+        Size of the validation set if es == True.
     es_give_up_after_nepochs : float
         Amount of epochs to try to decrease the validation loss before giving up and stoping training.
     es_splitter_random_state : float
@@ -80,8 +72,11 @@ n_train = x_train.shape[0] - n_test
     batch_max_size : float
         See batch_inital.
 
+    dataloader_workers : int
+        Number of parallel workers for the Pytorch dataloader.
+
     batch_test_size : integer
-        Size of the batch for validation and score estimators.
+        Size of the batch for validation and score methods.
         Does not affect training efficiency, usefull when there's
         little GPU memory.
     gpu : bool
@@ -327,6 +322,17 @@ n_train = x_train.shape[0] - n_test
 
             return avgloss
 
+    """
+    Calculate the opposite of mean squared error between prediction and
+    x_test; i.e.: (- (self.pred(x_test) - y_test)**2).mean()
+
+    Parameters
+    ----------
+    x_test : array
+        Matrix of features
+    y_test : array
+        Vector of response variable.
+    """
     def score(self, x_test, y_test):
         if len(y_test.shape) == 1:
             y_test = y_test[:, None]
@@ -362,6 +368,14 @@ n_train = x_train.shape[0] - n_test
 
             return -1 * np.average(loss_vals, weights=batch_sizes)
 
+    """
+    Predict y.
+
+    Parameters
+    ----------
+    x_pred : array
+        Matrix of features
+    """
     def predict(self, x_pred):
         with torch.no_grad():
             self.neural_net.eval()

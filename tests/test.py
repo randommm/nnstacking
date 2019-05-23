@@ -32,7 +32,7 @@ import os
 from generate_data import generate_data, true_pdf_calc
 
 if __name__ == '__main__':
-    n_train = 1_000
+    n_train = 10_000
     n_test = 5_000
     x_train, y_train = generate_data(n_train)
     x_test, y_test = generate_data(n_test)
@@ -109,18 +109,19 @@ if __name__ == '__main__':
     )
     nnpredict_obj.fit(x_train, y_train)
 
-    nnensemble_obj.verbose = 0
-    print("Risk on train (ensembler):", - nnensemble_obj.score(x_train, y_train))
+    #print("Risk on train (ensembler):", - nnensemble_obj.score(x_train, y_train))
     #for i, estimator in enumerate(nnensemble_obj.estimators):
     #    print("Risk on train for estimator", i, "is:",
     #          ((estimator.predict(x_train) - y_train)**2).mean()
     #         )
 
+    nnensemble_obj.verbose = 0
     print("Risk on test (ensembler):", - nnensemble_obj.score(x_test, y_test))
     print("Risk on test (ensembler):",
           ((nnensemble_obj.predict(x_test) - y_test)**2).mean()
          )
 
+    nnensemble_obj2.verbose = 0
     print("Risk on test (ensembler 2):", - nnensemble_obj2.score(x_test, y_test))
     print("Risk on test (ensembler 2):",
           ((nnensemble_obj2.predict(x_test) - y_test)**2).mean()
