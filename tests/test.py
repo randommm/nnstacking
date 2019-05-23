@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 
-from nnensemble import NNE, NNPredict
+from nnstacking import NNE, NNPredict
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn import svm, linear_model, ensemble, neighbors
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
                   linear_model.LassoLars(alpha=2.0),
                  ]
 
-    nnensemble_obj = NNE(
+    nnstacking_obj = NNE(
     verbose=2,
     nn_weight_decay=0.0,
     es=True,
@@ -85,18 +85,18 @@ if __name__ == '__main__':
     nworkers=3,
     ensemble_method="f_to_m",
     )
-    nnensemble_obj.fit(x_train, y_train)
+    nnstacking_obj.fit(x_train, y_train)
 
-    nnensemble_obj2 = NNE(
+    nnstacking_obj2 = NNE(
     verbose=2,
     nn_weight_decay=0.0,
     es=True,
     hidden_size=100,
     num_layers=10,
-    estimators=nnensemble_obj.estimators,
+    estimators=nnstacking_obj.estimators,
     gpu=True,
     nworkers=3,
-    ).fit(x_train, y_train, nnensemble_obj.predictions)
+    ).fit(x_train, y_train, nnstacking_obj.predictions)
 
     nnpredict_obj = NNPredict(
     verbose=2,
@@ -109,22 +109,22 @@ if __name__ == '__main__':
     )
     nnpredict_obj.fit(x_train, y_train)
 
-    #print("Risk on train (ensembler):", - nnensemble_obj.score(x_train, y_train))
-    #for i, estimator in enumerate(nnensemble_obj.estimators):
+    #print("Risk on train (ensembler):", - nnstacking_obj.score(x_train, y_train))
+    #for i, estimator in enumerate(nnstacking_obj.estimators):
     #    print("Risk on train for estimator", i, "is:",
     #          ((estimator.predict(x_train) - y_train)**2).mean()
     #         )
 
-    nnensemble_obj.verbose = 0
-    print("Risk on test (ensembler):", - nnensemble_obj.score(x_test, y_test))
+    nnstacking_obj.verbose = 0
+    print("Risk on test (ensembler):", - nnstacking_obj.score(x_test, y_test))
     print("Risk on test (ensembler):",
-          ((nnensemble_obj.predict(x_test) - y_test)**2).mean()
+          ((nnstacking_obj.predict(x_test) - y_test)**2).mean()
          )
 
-    nnensemble_obj2.verbose = 0
-    print("Risk on test (ensembler 2):", - nnensemble_obj2.score(x_test, y_test))
+    nnstacking_obj2.verbose = 0
+    print("Risk on test (ensembler 2):", - nnstacking_obj2.score(x_test, y_test))
     print("Risk on test (ensembler 2):",
-          ((nnensemble_obj2.predict(x_test) - y_test)**2).mean()
+          ((nnstacking_obj2.predict(x_test) - y_test)**2).mean()
          )
 
     print("Risk on test (direct neural network):", - nnpredict_obj.score(x_test, y_test))
@@ -133,7 +133,7 @@ if __name__ == '__main__':
          )
 
     risks = []
-    for i, estimator in enumerate(nnensemble_obj.estimators):
+    for i, estimator in enumerate(nnstacking_obj.estimators):
         prediction = estimator.predict(x_test)
         if len(prediction.shape) == 1:
             prediction = prediction[:, None]
@@ -147,8 +147,8 @@ if __name__ == '__main__':
 
     """
     #Check using true density information
-    est_pdf = nnensemble_obj.predict(x_test)[:, 1:-1]
-    true_pdf = true_pdf_calc(x_test, nnensemble_obj.y_grid[1:-1][:,None]).T
+    est_pdf = nnstacking_obj.predict(x_test)[:, 1:-1]
+    true_pdf = true_pdf_calc(x_test, nnstacking_obj.y_grid[1:-1][:,None]).T
     sq_errors = (est_pdf - true_pdf)**2
     #print("Squared density errors for test:\n", sq_errors)
     print("\nAverage squared density errors for test:\n", sq_errors.mean())
@@ -160,4 +160,4 @@ if __name__ == '__main__':
     """
 
     # Get ensembler weights
-    nnensemble_obj.get_weights(x_test)
+    nnstacking_obj.get_weights(x_test)

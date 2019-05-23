@@ -21,13 +21,12 @@ try:
 except ImportError:
     from distutils.core import setup
 
-setup(name='nnensemble',
+setup(name='nnstacking',
       version='0.0.1',
       description='Emsembler of predictors using neural networks',
       author='Marco Inacio, Victor Coscrato',
       author_email='pythonpackages@marcoinacio.com, vcoscrato@gmail.com',
-      url='http://nnensemble.marcoinacio.com/',
-      packages=['nnensemble'],
+      packages=['nnstacking'],
       keywords = ['neural networks', 'predictors'],
       license='GPL3',
       install_requires=['numpy', 'scikit-learn']
