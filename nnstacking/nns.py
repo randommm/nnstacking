@@ -41,8 +41,8 @@ class NNS(BaseEstimator):
     estimators : list
         List of estimators to use. They must be sklearn-compatible.
     ensemble_method : str
-        Chooses the ensembling method. "f_to_m" for features to matrix m and
-        "f_to_w" for features to directly to weights.
+        Chooses the ensembling method. "CNNS" for features to matrix M and
+        "UNNS" for features to directly to weights.
     ensemble_addition : bool
         Additional output from the neural network to the ensembler.
     splitter : object
@@ -91,7 +91,7 @@ class NNS(BaseEstimator):
     """
     def __init__(self,
                  estimators=None,
-                 ensemble_method="f_to_m",
+                 ensemble_method="CNNS",
                  ensemble_addition=True,
                  splitter=10,
                  nworkers=2,
@@ -473,7 +473,7 @@ class NNS(BaseEstimator):
         else:
             extra = 0
 
-        if self.ensemble_method == "f_to_m":
+        if self.ensemble_method == "CNNS":
             output = output.view(-1, self.est_dim,
                 self.est_dim)
             output_res = output.new(output.shape[0],
@@ -668,10 +668,10 @@ class NNS(BaseEstimator):
                 gain=nn.init.calculate_gain('relu')
                 nn.init.xavier_normal_(layer.weight, gain=gain)
 
-        if self.ensemble_method == "f_to_w":
+        if self.ensemble_method == "UNNS":
             output_dim = self.est_dim
             softmax = False
-        elif self.ensemble_method == "f_to_m":
+        elif self.ensemble_method == "CNNS":
             output_dim = self.est_dim ** 2
             softmax = True
         if self.ensemble_addition:
