@@ -32,7 +32,7 @@ from sklearn import svm, linear_model
 import multiprocessing as mp
 from copy import deepcopy
 
-class NNE(BaseEstimator):
+class NNS(BaseEstimator):
     """
     Stacks many estimators using deep foward neural networks.
 
