@@ -45,21 +45,30 @@ class LinearStack(BaseEstimator):
         Matrix of features
     y_train : array
         Vector of response variable.
+    predictions : array
+        Array of dimensions (nobs, est_dim) with the predictions
+        to be used by the model. If None, then will generate them
+        automatically using cross validation. If not None, then the
+        estimators passed to constructor will not be trained, i.e.
+        you must train them before!
     """
-    def fit(self, x_train, y_train):
-        z = np.zeros(len(y_train)).reshape(len(y_train),1)
+    def fit(self, x_train, y_train, predictions=None):
 
-        for i in range(len(self.estimators)):
-            z = np.hstack((z, cross_val_predict(self.estimators[i], x_train, y_train.reshape(-1)).reshape(len(y_train),1)))
+        if predictions is not None:
+            assert(predictions.shape == (len(x_train), len(self.estimators)))
 
-            if self.verbose > 1:
-                print('Cross-validated: ', self.estimators[i])
+        else:
+            predictions = np.empty((len(train), len(base_est)))
+            for i, est in enumerate(self.estimators):
+                if self.verbose > 1:
+                    print('Cross-validating: ', est)
+                predictions[:, i] = cross_val_predict(est, x[train], y[train], cv=2)
+                if self.verbose > 1:
+                    print('Estimating: ', self.estimators[i])
+                est.fit(x[train], y[train])
+                cv_predictions[test, i] = est.predict(x[test])
 
-            self.estimators[i].fit(x_train, y_train.reshape(-1))
-            if self.verbose > 1:
-                print('Estimated: ', self.estimators[i])
-
-        adj = nnls(np.delete(z, 0, 1), y_train.reshape(-1))
+        adj = nnls(predictions, y_train.reshape(-1))
         self.parameters = adj[0]
         self.train_mse = adj[1]/len(y_train)
 
@@ -77,11 +86,11 @@ class LinearStack(BaseEstimator):
         Matrix of features
     """
     def predict(self, x):
-        z = np.zeros(x.shape[0]).reshape(x.shape[0], 1)
-        for i in range(len(self.estimators)):
-            z = np.hstack((z, self.estimators[i].predict(x).reshape(x.shape[0], 1)))
+        predictions = np.empty((len(x), len(self.estimators)))
+        for i, est in enumerate(self.estimators):
+            predictions[:, i] = est.predict(x)
 
-        return np.dot(np.delete(z, 0, 1), self.parameters)
+        return np.dot(predictions, self.parameters)
 
     """
     Calculate the opposite of mean squared error between prediction and
