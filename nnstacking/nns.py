@@ -32,6 +32,8 @@ from sklearn import svm, linear_model
 import multiprocessing as mp
 from copy import deepcopy
 
+from .radam import RAdam
+
 class NNS(BaseEstimator):
     """
     Stacks many estimators using deep foward neural networks.
@@ -113,10 +115,13 @@ class NNS(BaseEstimator):
                  batch_step_epoch_expon=1.4,
                  batch_max_size=1000,
 
+                 optim_lr=1e-3,
+
                  batch_test_size=2000,
                  gpu=True,
                  verbose=1,
                  ):
+
 
         for prop in dir():
             if prop != "self":
@@ -296,8 +301,11 @@ class NNS(BaseEstimator):
         start_time = time.process_time()
 
         lr = 0.1
-        optimizer = optim.Adamax(self.neural_net.parameters(), lr=lr,
-                                 weight_decay=self.nn_weight_decay)
+        optimizer = RAdam(
+            self.neural_net.parameters(),
+            lr=self.optim_lr,
+            weight_decay=self.nn_weight_decay
+        )
         es_penal_tries = 0
         for _ in range_epoch:
             batch_size = int(min(batch_max_size,
@@ -346,13 +354,7 @@ class NNS(BaseEstimator):
                     else:
                         es_tries += 1
 
-                    if (es_tries == self.es_give_up_after_nepochs // 3 or
-                        es_tries == self.es_give_up_after_nepochs // 3 * 2):
-                        if self.verbose >= 2:
-                            print("Decreasing learning rate by half.")
-                        optimizer.param_groups[0]['lr'] *= 0.5
-                        self.neural_net.load_state_dict(best_state_dict)
-                    elif es_tries >= self.es_give_up_after_nepochs:
+                    if es_tries >= self.es_give_up_after_nepochs:
                         self.neural_net.load_state_dict(best_state_dict)
                         if self.verbose >= 1:
                             print("Validation loss did not improve after",
@@ -422,9 +424,9 @@ class NNS(BaseEstimator):
                     nnpred_next = nnpred[i:i+batch_size]
 
                     if self.gpu:
-                        nnx_next = nnx_next.cuda(async=True)
-                        nny_next = nny_next.cuda(async=True)
-                        nnpred_next = nnpred_next.cuda(async=True)
+                        nnx_next = nnx_next.cuda(non_blocking=True)
+                        nny_next = nny_next.cuda(non_blocking=True)
+                        nnpred_next =nnpred_next.cuda(non_blocking=True)
 
                 if i != 0:
                     batch_actual_size = nnx_this.shape[0]
@@ -567,9 +569,9 @@ class NNS(BaseEstimator):
                     nnpred_next = nnpred[i:i+batch_size]
 
                     if self.gpu:
-                        nnx_next = nnx_next.cuda(async=True)
-                        nny_next = nny_next.cuda(async=True)
-                        nnpred_next = nnpred_next.cuda(async=True)
+                        nnx_next = nnx_next.cuda(non_blocking=True)
+                        nny_next = nny_next.cuda(non_blocking=True)
+                        nnpred_next =nnpred_next.cuda(non_blocking=True)
 
                 if i != 0:
                     output = self._ensemblize(nnx_this,
@@ -674,6 +676,8 @@ class NNS(BaseEstimator):
         elif self.ensemble_method == "CNNS":
             output_dim = self.est_dim ** 2
             softmax = True
+        else:
+            raise ValueError("ensemble_method must be UNNS or CNNS")
         if self.ensemble_addition:
             output_dim += 1
         output_hl_size = int(self.hidden_size)

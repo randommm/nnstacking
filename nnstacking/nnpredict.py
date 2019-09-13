@@ -30,6 +30,7 @@ from sklearn.model_selection import ShuffleSplit
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from copy import deepcopy
+from .radam import RAdam
 
 def _np_to_tensor(arr):
     arr = np.array(arr, dtype='f4')
@@ -102,6 +103,8 @@ class NNPredict(BaseEstimator):
                  batch_step_epoch_expon=2.0,
                  batch_max_size=1000,
                  dataloader_workers=1,
+
+                 optim_lr=1e-3,
 
                  batch_test_size=2000,
                  gpu=True,
@@ -195,8 +198,11 @@ class NNPredict(BaseEstimator):
         start_time = time.time()
 
         lr = 0.1
-        optimizer = optim.Adamax(self.neural_net.parameters(), lr=lr,
-                                 weight_decay=self.nn_weight_decay)
+        optimizer = RAdam(
+            self.neural_net.parameters(),
+            lr=self.optim_lr,
+            weight_decay=self.nn_weight_decay
+        )
         es_penal_tries = 0
         for _ in range_epoch:
             batch_size = int(min(batch_max_size,
@@ -231,15 +237,7 @@ class NNPredict(BaseEstimator):
                     else:
                         es_tries += 1
 
-                    if (es_tries == self.es_give_up_after_nepochs // 3
-                        or
-                        es_tries == self.es_give_up_after_nepochs // 3
-                        * 2):
-                        if self.verbose >= 2:
-                            print("Decreasing learning rate by half.")
-                        optimizer.param_groups[0]['lr'] *= 0.5
-                        self.neural_net.load_state_dict(best_state_dict)
-                    elif es_tries >= self.es_give_up_after_nepochs:
+                    if es_tries >= self.es_give_up_after_nepochs:
                         self.neural_net.load_state_dict(best_state_dict)
                         if self.verbose >= 1:
                             print("Validation loss did not improve after",

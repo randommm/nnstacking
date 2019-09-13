@@ -20,7 +20,7 @@ import torch.nn.functional as F
 import numpy as np
 import scipy.stats as stats
 
-from nnstacking import NNE, NNPredict
+from nnstacking import NNS, NNPredict
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
 from sklearn import svm, linear_model, ensemble, neighbors
 
@@ -74,7 +74,7 @@ if __name__ == '__main__':
                   linear_model.LassoLars(alpha=2.0),
                  ]
 
-    nnstacking_obj = NNE(
+    nnstacking_obj = NNS(
     verbose=2,
     nn_weight_decay=0.0,
     es=True,
@@ -83,11 +83,11 @@ if __name__ == '__main__':
     estimators=estimators,
     gpu=True,
     nworkers=3,
-    ensemble_method="f_to_m",
+    ensemble_method="UNNS",
     )
-    nnstacking_obj.fit(x_train, y_train)
+    #nnstacking_obj.fit(x_train, y_train)
 
-    nnstacking_obj2 = NNE(
+    nnstacking_obj2 = NNS(
     verbose=2,
     nn_weight_decay=0.0,
     es=True,
@@ -96,7 +96,8 @@ if __name__ == '__main__':
     estimators=nnstacking_obj.estimators,
     gpu=True,
     nworkers=3,
-    ).fit(x_train, y_train, nnstacking_obj.predictions)
+    )
+    #nnstacking_obj2.fit(x_train, y_train, nnstacking_obj.predictions)
 
     nnpredict_obj = NNPredict(
     verbose=2,
