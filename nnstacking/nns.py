@@ -22,7 +22,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import numpy as np
-import time
+from time import time
 import itertools
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import ShuffleSplit, KFold
@@ -96,7 +96,7 @@ class NNS(BaseEstimator):
                  ensemble_method="CNNS",
                  ensemble_addition=True,
                  splitter=10,
-                 nworkers=2,
+                 nworkers=1,
 
                  num_layers=3,
                  hidden_size=100,
@@ -207,10 +207,14 @@ class NNS(BaseEstimator):
                 prediction = torch.from_numpy(prediction)
                 self.predictions[:, :, eind] = prediction
 
+
+            self.estimators_time = []
             for estimator in self.estimators:
+                starttime = time()
                 if self.verbose >= 1:
                     print("Fitting full estimator", estimator)
                 estimator.fit(x_train, y_train)
+                self.estimators_time.append(time() - starttime)
 
         else:
             ctx = mp.get_context('spawn')
@@ -298,7 +302,7 @@ class NNS(BaseEstimator):
         batch_max_size = min(self.batch_max_size, nnx_train.shape[0])
         self.loss_history_train = []
 
-        start_time = time.process_time()
+        start_time = time()
 
         lr = 0.1
         optimizer = RAdam(
@@ -388,7 +392,7 @@ class NNS(BaseEstimator):
                     self.neural_net.load_state_dict(best_state_dict)
                 break
 
-        elapsed_time = time.process_time() - start_time
+        elapsed_time = time() - start_time
         if self.verbose >= 1:
             print("Elapsed time:", elapsed_time, flush=True)
 
