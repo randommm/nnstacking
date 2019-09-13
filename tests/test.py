@@ -85,7 +85,7 @@ if __name__ == '__main__':
     nworkers=3,
     ensemble_method="UNNS",
     )
-    #nnstacking_obj.fit(x_train, y_train)
+    nnstacking_obj.fit(x_train, y_train)
 
     nnstacking_obj2 = NNS(
     verbose=2,
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     gpu=True,
     nworkers=3,
     )
-    #nnstacking_obj2.fit(x_train, y_train, nnstacking_obj.predictions)
+    nnstacking_obj2.fit(x_train, y_train, nnstacking_obj.predictions)
 
     nnpredict_obj = NNPredict(
     verbose=2,
