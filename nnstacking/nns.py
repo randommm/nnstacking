@@ -509,6 +509,9 @@ class NNS(BaseEstimator):
             if self.gpu:
                 nnx = nnx.cuda()
             output, extra = self._calculate_weights(nnx)
+            output = output.cpu().numpy()
+            if isinstance(extra, torch.Tensor):
+                extra = extra.cpu().numpy()
         return output, extra
 
     def _ensemblize(self, nnx, nnpred):
