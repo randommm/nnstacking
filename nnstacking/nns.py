@@ -306,9 +306,10 @@ class NNS(BaseEstimator):
 
         start_time = time()
 
+        self.actual_optim_lr = self.optim_lr
         optimizer = optimm(
             self.neural_net.parameters(),
-            lr=self.optim_lr,
+            lr=self.actual_optim_lr,
             weight_decay=self.nn_weight_decay
         )
         es_penal_tries = 0
@@ -366,7 +367,9 @@ class NNS(BaseEstimator):
                         if self.verbose >= 2:
                             print("No improvement for", es_tries,
                              "tries")
+                            print("Decreasing learning rate by half")
                             print("Restarting from best route.")
+                        optimizer.param_groups[0]['lr'] *= 0.5
                         self.neural_net.load_state_dict(
                             best_state_dict)
                     elif es_tries >= self.es_give_up_after_nepochs:
@@ -392,10 +395,10 @@ class NNS(BaseEstimator):
                 self._construct_neural_net()
                 if self.gpu:
                     self.move_to_gpu()
-                self.optim_lr /= 2
+                self.actual_optim_lr /= 2
                 optimizer = optimm(
                     self.neural_net.parameters(),
-                    lr=self.optim_lr,
+                    lr=self.actual_optim_lr,
                     weight_decay=self.nn_weight_decay
                 )
                 self.epoch_count = 0
