@@ -30,7 +30,7 @@ from sklearn.model_selection import ShuffleSplit
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from copy import deepcopy
-from .radam import RAdam
+from torch.optim import Adamax as optimm
 
 def _np_to_tensor(arr):
     arr = np.array(arr, dtype='f4')
@@ -197,7 +197,7 @@ class NNPredict(BaseEstimator):
 
         start_time = time.time()
 
-        optimizer = RAdam(
+        optimizer = optimm(
             self.neural_net.parameters(),
             lr=self.optim_lr,
             weight_decay=self.nn_weight_decay
@@ -268,7 +268,7 @@ class NNPredict(BaseEstimator):
                 if self.gpu:
                     self.move_to_gpu()
                 self.optim_lr /= 2
-                optimizer = RAdam(
+                optimizer = optimm(
                     self.neural_net.parameters(),
                     lr=self.optim_lr,
                     weight_decay=self.nn_weight_decay

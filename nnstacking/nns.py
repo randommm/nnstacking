@@ -32,7 +32,7 @@ from sklearn import svm, linear_model
 import multiprocessing as mp
 from copy import deepcopy
 
-from .radam import RAdam
+from torch.optim import Adamax as optimm
 
 class NNS(BaseEstimator):
     """
@@ -306,7 +306,7 @@ class NNS(BaseEstimator):
 
         start_time = time()
 
-        optimizer = RAdam(
+        optimizer = optimm(
             self.neural_net.parameters(),
             lr=self.optim_lr,
             weight_decay=self.nn_weight_decay
@@ -393,7 +393,7 @@ class NNS(BaseEstimator):
                 if self.gpu:
                     self.move_to_gpu()
                 self.optim_lr /= 2
-                optimizer = RAdam(
+                optimizer = optimm(
                     self.neural_net.parameters(),
                     lr=self.optim_lr,
                     weight_decay=self.nn_weight_decay
