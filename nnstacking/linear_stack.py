@@ -88,7 +88,10 @@ class LinearStack(BaseEstimator):
     def predict(self, x):
         predictions = np.empty((len(x), len(self.estimators)))
         for i, est in enumerate(self.estimators):
-            predictions[:, i] = est.predict(x)
+            prediction = est.predict(x)
+            if len(prediction.shape) == 1:
+                prediction = prediction[:, None]
+            predictions[:, [i]] = prediction
 
         return np.dot(predictions, self.parameters)
 

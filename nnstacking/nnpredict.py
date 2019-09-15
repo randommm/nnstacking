@@ -197,7 +197,6 @@ class NNPredict(BaseEstimator):
 
         start_time = time.time()
 
-        lr = 0.1
         optimizer = RAdam(
             self.neural_net.parameters(),
             lr=self.optim_lr,
@@ -237,12 +236,25 @@ class NNPredict(BaseEstimator):
                     else:
                         es_tries += 1
 
-                    if es_tries >= self.es_give_up_after_nepochs:
-                        self.neural_net.load_state_dict(best_state_dict)
+                    if (es_tries == self.es_give_up_after_nepochs
+                        // 3 or
+                        es_tries == self.es_give_up_after_nepochs
+                        // 3 * 2):
+                        if self.verbose >= 2:
+                            print("No improvement for", es_tries,
+                             "tries")
+                            print("Restarting from best route.")
+                        self.neural_net.load_state_dict(
+                            best_state_dict)
+                    elif es_tries >= self.es_give_up_after_nepochs:
+                        self.neural_net.load_state_dict(
+                            best_state_dict)
                         if self.verbose >= 1:
-                            print("Validation loss did not improve after",
-                                  self.es_give_up_after_nepochs, "tries.",
-                                  "Stopping")
+                            print(
+                                "Validation loss did not improve after",
+                                self.es_give_up_after_nepochs,
+                                "tries. Stopping"
+                            )
                         break
 
                 self.epoch_count += 1
@@ -255,9 +267,12 @@ class NNPredict(BaseEstimator):
                 self._construct_neural_net()
                 if self.gpu:
                     self.move_to_gpu()
-                lr /= 2
-                optimizer = optim.Adamax(self.neural_net.parameters(),
-                    lr=lr, weight_decay=self.nn_weight_decay)
+                self.optim_lr /= 2
+                optimizer = RAdam(
+                    self.neural_net.parameters(),
+                    lr=self.optim_lr,
+                    weight_decay=self.nn_weight_decay
+                )
                 self.epoch_count = 0
 
                 continue
